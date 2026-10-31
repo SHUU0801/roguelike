@@ -4,6 +4,7 @@ import { FloorView } from './FloorView';
 import { Lobby } from './Lobby';
 import { PartyBar } from './PartyBar';
 import { useGame } from './useGame';
+import { useTurnEffects } from './useTurnEffects';
 import { itemAt, tileAt, type Dir, type Intent } from '../shared/types';
 
 /** 締め切りまでの残り秒。待っていないときは null */
@@ -26,6 +27,12 @@ export function App() {
 
   const deadlineAt = conn.status === 'open' ? conn.state.deadlineAt : null;
   const secondsLeft = useSecondsLeft(deadlineAt);
+
+  // フックは条件付きで呼べないので、繋がっていないときは null を渡す
+  const turnEffects = useTurnEffects(
+    conn.status === 'open' ? conn.state : null,
+    conn.status === 'open' ? conn.myId : null,
+  );
 
   // PC 向けの矢印キー操作。スマホのタップと同じ Intent を送るだけ。
   useEffect(() => {
@@ -134,8 +141,12 @@ export function App() {
       <FloorView
         state={state}
         myId={myId}
+        turnEffects={turnEffects}
         onMove={(dir) => act({ type: 'move', dir })}
       />
+
+      {/* 殴られた合図。key にターンを入れて、連続で殴られても毎回光らせる */}
+      {turnEffects.selfHurt && <div key={state.turn} className="hurt-flash" />}
 
       <div className="log">
         {state.log.slice(-2).map((line, i) => (

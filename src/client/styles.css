@@ -326,3 +326,99 @@ button.wide.primary {
   border-color: #3f7d5a;
   font-weight: 600;
 }
+
+/* --- 動き（04_絵とアニメの方針.md §2 の「② 動きだけ」） ---
+ *
+ * 絵のコマは1枚も要らない。CSS の transform だけで手応えを作る。
+ * 向きは JS から --dx / --dy（-1 / 0 / 1）で渡される。
+ *
+ * 要素はターンごとに作り直されるので（FloorView の key）、
+ * 同じ動きでも毎ターンきちんと再生される。
+ */
+
+/* 自キャラはゆっくり呼吸する。待機のコマが無くても生きて見える */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+
+.sprite.self {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+/* 移動: 元いた方向から滑り込む */
+@keyframes slide-in {
+  from {
+    transform: translate(calc(var(--dx, 0) * -100%), calc(var(--dy, 0) * -100%));
+  }
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+/* 攻撃: 相手の方向へ踏み込んで戻る。これだけで「殴った」が伝わる */
+@keyframes lunge {
+  0% { transform: translate(0, 0); }
+  45% { transform: translate(calc(var(--dx, 0) * 38%), calc(var(--dy, 0) * 38%)); }
+  100% { transform: translate(0, 0); }
+}
+
+/* 被弾: 細かく揺れる */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-24%); }
+  40% { transform: translateX(24%); }
+  60% { transform: translateX(-14%); }
+  80% { transform: translateX(14%); }
+}
+
+/* 被弾: 一瞬白く飛ぶ。transform とは別のプロパティなので重ねられる */
+@keyframes blanch {
+  0%, 100% { filter: none; }
+  30% { filter: brightness(2.6) saturate(0.2); }
+}
+
+/* 死亡: 回りながら縮んで消える */
+@keyframes die {
+  from { transform: scale(1) rotate(0deg); opacity: 1; }
+  to { transform: scale(0.35) rotate(150deg); opacity: 0; }
+}
+
+/* 呼吸より後に書く。同じ animation プロパティなので、後のほうが勝つ */
+.sprite.moved { animation: slide-in 0.13s linear; }
+.sprite.lunge { animation: lunge 0.22s ease-out; }
+.sprite.hit { animation: shake 0.26s ease-out, blanch 0.26s ease-out; }
+.sprite.dying { animation: die 0.38s ease-in forwards; }
+
+/* 自分が殴られたら画面全体を赤く光らせる。HP の数字を見張らなくて済む */
+@keyframes hurt-flash {
+  from { box-shadow: inset 0 0 0 9999px rgba(200, 60, 60, 0.3); }
+  to { box-shadow: inset 0 0 0 9999px rgba(200, 60, 60, 0); }
+}
+
+/* ターンごとに要素ごと作り直す。クラスの付け外しだと
+   2ターン続けて殴られたときに2回目が再生されない */
+.hurt-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  animation: hurt-flash 0.35s ease-out forwards;
+}
+
+/* 押した感触。これが無いと「反応していない」と思われる */
+.cell.movable:active { filter: brightness(1.5); }
+.actions button:active:not(:disabled) { transform: scale(0.96); }
+
+/* 動きを減らす設定の人には出さない */
+@media (prefers-reduced-motion: reduce) {
+  .sprite.self,
+  .sprite.moved,
+  .sprite.lunge,
+  .sprite.hit,
+  .sprite.dying,
+  .hurt-flash {
+    animation: none;
+    display: none;
+  }
+}

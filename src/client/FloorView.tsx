@@ -12,6 +12,7 @@ import {
   type Dir,
   type GameState,
 } from '../shared/types';
+import type { Effect, TurnEffects } from './useTurnEffects';
 
 /**
  * 見える範囲（マス数）。
@@ -28,7 +29,7 @@ const VIEW_H = 11;
  * スプライト1枚分の背景指定。
  *
  * ピクセル計算ではなく % で切り出す。マスの大きさが変わっても追従する。
- * 拡大でぼやけないよう、ドット絵側は CSS の image-rendering: pixelated に任せる。
+ * 拡大でぼやけないのは CSS の image-rendering: pixelated に任せる。
  */
 function spriteStyle(id: SpriteId): CSSProperties {
   const index = SPRITE_INDEX[id];
@@ -41,6 +42,12 @@ function spriteStyle(id: SpriteId): CSSProperties {
       (row / Math.max(1, SHEET.rows - 1)) * 100
     }%`,
   };
+}
+
+/** 動きの向きは CSS 変数で渡す。キーフレーム側がこれを掛けて使う */
+function effectStyle(effect: Effect | undefined): CSSProperties {
+  if (!effect || effect.kind === 'hit') return {};
+  return { '--dx': effect.dx, '--dy': effect.dy } as CSSProperties;
 }
 
 /**
@@ -62,6 +69,7 @@ function useSprites(): boolean {
 type Props = {
   state: GameState;
   myId: string;
+  turnEffects: TurnEffects;
   onMove: (dir: Dir) => void;
 };
 
@@ -76,7 +84,7 @@ type Props = {
  *   見たことがある     … 地形だけ（暗く）
  *   見たことがない     … 真っ黒
  */
-export function FloorView({ state, myId, onMove }: Props) {
+export function FloorView({ state, myId, turnEffects, onMove }: Props) {
   const { floor } = state;
   const sprites = useSprites();
   const me = state.actors.find((a) => a.id === myId);
@@ -112,6 +120,9 @@ export function FloorView({ state, myId, onMove }: Props) {
           ? itemDefOf(item.itemId).sprite
           : null;
 
+      const effect = occupant ? turnEffects.effects.get(occupant.id) : undefined;
+      const ghost = turnEffects.ghosts.find((g) => g.pos.x === x && g.pos.y === y);
+
       cells.push(
         <div
           key={`${x},${y}`}
@@ -121,8 +132,31 @@ export function FloorView({ state, myId, onMove }: Props) {
           style={sprites && known ? spriteStyle(TILE_SPRITE[tile]) : undefined}
           onClick={movable && dir ? () => onMove(dir) : undefined}
         >
+          {/* 倒れたものの残像。消えるアニメーションの間だけ出る */}
+          {sprites && ghost && (
+            <span
+              key={`ghost-${ghost.id}`}
+              className="sprite dying"
+              style={spriteStyle(ghost.sprite)}
+            />
+          )}
+
           {sprites
-            ? topSprite && <span className="sprite" style={spriteStyle(topSprite)} />
+            ? topSprite && (
+                // key にターンを入れてあるのが肝。ターンごとに要素を作り直すので
+                // 同じ種類のアニメーションでも毎回きちんと再生される
+                <span
+                  key={`${occupant?.id ?? 'item'}-${state.turn}`}
+                  className={[
+                    'sprite',
+                    occupant?.id === myId ? 'self' : '',
+                    effect ? effect.kind : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  style={{ ...spriteStyle(topSprite), ...effectStyle(effect) }}
+                />
+              )
             : glyphAt(state, x, y, visible, remembered)}
         </div>,
       );
