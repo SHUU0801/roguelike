@@ -12,10 +12,26 @@ import type { GameState, Intent } from '../shared/types';
 
 /**
  * サーバーの場所。
- * localhost 固定にせず、開いている URL のホスト名を使う。
- * こうしておくとスマホの実機から LAN 経由で開いたときもそのまま繋がる。
+ *
+ * 公開したときは、画面と WebSocket を同じサーバーが配っている。
+ * だから開いている URL にそのまま繋げばよく、設定が要らない。
+ * https のページでは wss でないとブラウザに拒否されるので、そこだけ合わせる。
+ *
+ * 開発中は Vite（5173）と Colyseus（2567）が別なので、ポートを足す。
+ * localhost 固定にしないので、スマホの実機から LAN 経由で開いてもそのまま繋がる。
+ *
+ * VITE_SERVER_URL を設定すれば、別のサーバーを向かせることもできる。
  */
-const SERVER_URL = `ws://${window.location.hostname}:2567`;
+function serverUrl(): string {
+  const override = import.meta.env.VITE_SERVER_URL;
+  if (override) return override;
+
+  const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  if (import.meta.env.DEV) return `${scheme}://${window.location.hostname}:2567`;
+  return `${scheme}://${window.location.host}`;
+}
+
+const SERVER_URL = serverUrl();
 
 /** URL に ?room=xxxx が付いていれば、その部屋に合流する */
 function wantedRoomId(): string | null {

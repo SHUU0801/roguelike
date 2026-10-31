@@ -52,9 +52,12 @@ export function Lobby({ state, myId, inviteUrl, onStart }: Props) {
         <button className="wide" onClick={copy}>
           {copied ? 'コピーした' : 'URL をコピー'}
         </button>
-        <p className="hint">
-          スマホから入るときは、同じ Wi-Fi に繋いでから開くこと。
-        </p>
+        {/* 開発中だけの注意。公開したらインターネット越しに入れるので出さない */}
+        {import.meta.env.DEV && (
+          <p className="hint">
+            開発中は同じ Wi-Fi に繋いでから開くこと（Network: の URL を使う）。
+          </p>
+        )}
       </section>
 
       <button className="wide primary" onClick={onStart}>
