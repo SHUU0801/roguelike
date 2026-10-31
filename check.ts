@@ -136,6 +136,7 @@ function turn(state: GameState, intent: Intent): void {
     def: 0,
     alive: true,
     fuel: 0,
+    slot: 0,
   });
   turn(state, { type: 'wait' });
   assert(state.phase === 'lost', `倒れると lost になる (phase=${state.phase})`);
@@ -221,6 +222,7 @@ function turn(state: GameState, intent: Intent): void {
     def: 0,
     alive: true,
     fuel: 0,
+    slot: 0,
   });
   turn(state, { type: 'wait' });
   const dropped = state.items.find((i) => i.id === 'it-drop');
@@ -290,6 +292,7 @@ function turn(state: GameState, intent: Intent): void {
     def: 0,
     alive: true,
     fuel: 0,
+    slot: 0,
   });
   const before = me.hp;
   // 敵の反対側へ逃げる = 隣接から離れる
@@ -321,6 +324,121 @@ function turn(state: GameState, intent: Intent): void {
   assert(
     items.length >= 1 && monsters.length >= 1,
     `1F の最初の部屋に物と敵がいる (アイテム${items.length} / 敵${monsters.length})`,
+  );
+}
+
+// --- 20. 足元に置いて、仲間が拾える ---
+{
+  const { state, me } = fresh();
+  addPlayer(state, 'p2');
+  const mate = state.actors.find((a) => a.id === 'p2');
+  if (!mate) throw new Error('no mate');
+
+  state.items.push({ id: 'it-give', itemId: 'potion', pos: null, ownerId: 'p1' });
+  turn(state, { type: 'drop', instanceId: 'it-give' });
+
+  const onFloor = state.items.find((i) => i.id === 'it-give');
+  assert(
+    onFloor !== undefined && onFloor.ownerId === null && onFloor.pos !== null,
+    '持ち物を足元に置ける',
+  );
+
+  // 置いた本人がそのマスに立ったままだと仲間は入れないので、まず退く
+  if (onFloor?.pos) {
+    me.pos = { x: onFloor.pos.x, y: onFloor.pos.y - 3 };
+    mate.pos = { x: onFloor.pos.x - 1, y: onFloor.pos.y };
+    resolveTurn(state, new Map<string, Intent>([['p2', { type: 'move', dir: 'e' }]]));
+  }
+  assert(
+    state.items.find((i) => i.id === 'it-give')?.ownerId === 'p2',
+    '置いたものを仲間が拾える = 渡せる',
+  );
+}
+
+// --- 21. 同じマスに2つ置けない ---
+{
+  const { state } = fresh();
+  state.items.push({ id: 'it-a', itemId: 'potion', pos: null, ownerId: 'p1' });
+  state.items.push({ id: 'it-b', itemId: 'bomb', pos: null, ownerId: 'p1' });
+  turn(state, { type: 'drop', instanceId: 'it-a' });
+  turn(state, { type: 'drop', instanceId: 'it-b' });
+  assert(
+    state.items.find((i) => i.id === 'it-b')?.ownerId === 'p1',
+    '足元が埋まっていたら置けない',
+  );
+}
+
+// --- 22. 倒れた仲間を起こせる。代償は自分の最大HP ---
+{
+  const { state, me } = fresh();
+  addPlayer(state, 'p2');
+  const mate = state.actors.find((a) => a.id === 'p2');
+  if (!mate) throw new Error('no mate');
+
+  mate.alive = false;
+  mate.hp = 0;
+  mate.pos = { x: me.pos.x + 1, y: me.pos.y };
+  const maxBefore = me.maxHp;
+
+  turn(state, { type: 'revive' });
+  // 起こされた本人は同じターンの「待機」で1回復するので、HP は 1 か 2
+  assert(
+    mate.alive && mate.hp >= 1 && me.maxHp === maxBefore - 4,
+    `起こせる（相手 HP ${mate.hp} / 自分の最大HP ${maxBefore}→${me.maxHp}）`,
+  );
+}
+
+// --- 23. 倒れた人も歩ける（偵察役）---
+{
+  const { state, me } = fresh();
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  me.alive = false;
+  const before = { ...me.pos };
+  // 壁に当たらない向きを探す
+  for (const dir of ['e', 'w', 'n', 's'] as const) {
+    turn(state, { type: 'move', dir });
+    if (me.pos.x !== before.x || me.pos.y !== before.y) break;
+  }
+  assert(
+    me.pos.x !== before.x || me.pos.y !== before.y,
+    '倒れていても移動できる（視界を届けられる）',
+  );
+}
+
+// --- 24. 階段は全員が同意するまで降りない ---
+{
+  const { state, me } = fresh();
+  addPlayer(state, 'p2');
+  const mate = state.actors.find((a) => a.id === 'p2');
+  if (!mate) throw new Error('no mate');
+
+  const idx = state.floor.tiles.indexOf('stairs');
+  me.pos = { x: idx % state.floor.width, y: Math.floor(idx / state.floor.width) };
+  const depth0 = state.floor.depth;
+
+  // 1人だけ押しても降りない
+  resolveTurn(state, new Map<string, Intent>([['p1', { type: 'descend' }]]));
+  const heldBack = state.floor.depth === depth0;
+
+  // 2人目が同意したら降りる
+  resolveTurn(state, new Map<string, Intent>([['p2', { type: 'descend' }]]));
+  assert(
+    heldBack && state.floor.depth === depth0 + 1,
+    `全員が同意するまで降りない（1人目で ${depth0} のまま → 2人目で ${state.floor.depth}）`,
+  );
+}
+
+// --- 25. 開始時に1人1個ずつ違うものを持つ ---
+{
+  const state = createInitialGame();
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  startGame(state);
+  const a = state.items.filter((i) => i.ownerId === 'p1');
+  const b = state.items.filter((i) => i.ownerId === 'p2');
+  assert(
+    a.length === 1 && b.length === 1 && a[0].itemId !== b[0].itemId,
+    `開始アイテムが人ごとに違う (${a[0]?.itemId} / ${b[0]?.itemId})`,
   );
 }
 

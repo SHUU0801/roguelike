@@ -54,7 +54,7 @@ export const MAX_PLAYERS = 4;
  * 計測は「そのターンで最初の誰かが動いた瞬間」から始まる。
  * 1人で遊んでいるときは動かない。
  */
-export const TURN_LIMIT_MS = 20_000;
+export const TURN_LIMIT_MS = 12_000;
 
 /**
  * 盤上で動くもの。プレイヤーもモンスターも同じ型にする。
@@ -78,6 +78,12 @@ export type Actor = {
   alive: boolean;
   /** 松明の残り。プレイヤーだけが持つ（モンスターは 0 のまま使わない） */
   fuel: number;
+  /**
+   * 何人目か（1〜4）。全員が同じ見た目なので、番号が無いと
+   * 「盤上のどれが誰か」「HP 3 なのは誰か」が対応付けられない。
+   * モンスターは 0。
+   */
+  slot: number;
 };
 
 export type ItemInstance = {
@@ -110,6 +116,13 @@ export type GameState = {
   actors: Actor[];
   items: ItemInstance[];
   log: string[];
+  /**
+   * 「降りる」に同意した人。全員が押すまで降りない。
+   * 1人が踏むと全員が引きずられ、床のアイテムが無警告で消えていた事故の対策。
+   */
+  descendReady: string[];
+  /** このフロアに入ったターン。1フロアの所要ターンを測るのに使う */
+  floorStartedAt: number;
   /** まだ今ターンの行動を送っていないプレイヤーの id */
   waitingFor: string[];
   /** ターンの締め切り（epoch ミリ秒）。待っていないときは null */
@@ -125,8 +138,15 @@ export type Intent =
   | { type: 'move'; dir: Dir }
   | { type: 'useItem'; instanceId: string }
   | { type: 'pickUp' }
+  /** 足元に置く。仲間に渡す唯一の手段 */
+  | { type: 'drop'; instanceId: string }
+  /** 隣で倒れている仲間を起こす。自分の最大HPを払う */
+  | { type: 'revive' }
   | { type: 'descend' }
   | { type: 'wait' };
+
+/** 蘇生の代償。アイテムを要求しない（出なかったランで詰むのを避ける） */
+export const REVIVE_COST = 4;
 
 /** マスの種類を取り出す。範囲外は壁として扱う */
 export function tileAt(floor: Floor, x: number, y: number): TileKind {

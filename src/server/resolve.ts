@@ -10,7 +10,7 @@ import {
   type Intent,
   type Pos,
 } from '../shared/types';
-import { FUEL_DANGER, FUEL_WARN } from '../shared/types';
+import { FUEL_DANGER, FUEL_WARN, REVIVE_COST } from '../shared/types';
 import { monsterAct } from './ai';
 import { attack, damage } from './combat';
 import { applyItem } from './effects';
@@ -33,7 +33,8 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
   // 順番をターンごとに回す。以前は state.actors の並び（＝入室順）で
   // 固定だったので、最初に入った人が毎ターン必ず先に動いていた。
   // 同じマスを2人が狙うと先の人が入るので、目に見えない恒久的な有利だった。
-  const players = state.actors.filter((a) => a.kind === 'player' && a.alive);
+  // 倒れた人も含める。死者は移動しかできないが、動けることで偵察役になれる
+  const players = state.actors.filter((a) => a.kind === 'player');
   for (let i = 0; i < players.length; i++) {
     const actor = players[(i + state.turn) % players.length];
     const intent = intents.get(actor.id) ?? { type: 'wait' };
@@ -96,6 +97,19 @@ function manhattan(a: Pos, b: Pos): number {
 function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): void {
   const actor = state.actors.find((a) => a.id === actorId);
   if (!actor) return;
+
+  // 倒れた人は歩くことしかできない。
+  // 完全な無入力にすると、最初の5分で死んだ人が25分ただ見ているだけになる。
+  // 視界は生きている人と共有されるので、偵察役として仕事が残る。
+  if (!actor.alive) {
+    if (intent.type !== 'move') return;
+    const delta = DIR_DELTA[intent.dir];
+    const nx = actor.pos.x + delta.x;
+    const ny = actor.pos.y + delta.y;
+    if (tileAt(state.floor, nx, ny) === 'wall') return;
+    actor.pos = { x: nx, y: ny };
+    return;
+  }
 
   switch (intent.type) {
     case 'wait':
@@ -184,9 +198,76 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
       return;
     }
 
+    case 'drop': {
+      const item = state.items.find(
+        (i) => i.id === intent.instanceId && i.ownerId === actor.id,
+      );
+      if (!item) {
+        pushLog(state, 'それは持っていない');
+        return;
+      }
+      // 1マスに2つ置くと itemAt が先頭しか返さないので、重ねさせない。
+      // 制約だが「どこに置くか」という小さな相談にもなる
+      if (itemAt(state, actor.pos.x, actor.pos.y)) {
+        pushLog(state, 'ここには置けない');
+        return;
+      }
+      item.ownerId = null;
+      item.pos = { ...actor.pos };
+      pushLog(state, `${itemDefOf(item.itemId).name}を置いた`);
+      return;
+    }
+
+    case 'revive': {
+      const fallen = state.actors.find(
+        (a) =>
+          a.kind === 'player' && !a.alive && manhattan(a.pos, actor.pos) === 1,
+      );
+      if (!fallen) {
+        pushLog(state, '隣に倒れている仲間はいない');
+        return;
+      }
+      // 代償は自分の耐久。アイテムを要求しない。
+      // 「薬草を1個」にすると、薬草が出なかったランで蘇生が不可能になり、
+      // 対戦で最も嫌う「運で負けた」を協力モードで作ってしまう。
+      if (actor.maxHp <= REVIVE_COST + 1) {
+        pushLog(state, 'これ以上は分けてやれない');
+        return;
+      }
+      actor.maxHp -= REVIVE_COST;
+      actor.hp = Math.min(actor.hp, actor.maxHp);
+      fallen.alive = true;
+      fallen.hp = 1;
+      fallen.fuel = Math.max(fallen.fuel, 40);
+      pushLog(
+        state,
+        `${actor.slot}番が ${fallen.slot}番を起こした（最大HP -${REVIVE_COST}）`,
+      );
+      return;
+    }
+
     case 'descend': {
-      if (tileAt(state.floor, actor.pos.x, actor.pos.y) !== 'stairs') {
-        pushLog(state, 'ここに階段はない');
+      // 階段に誰か1人でも立っていれば、他の人は離れた場所からでも同意できる。
+      // 全員を階段に集めさせると待ち時間が生まれるので、そうはしない
+      const someoneOnStairs = state.actors.some(
+        (a) =>
+          a.kind === 'player' &&
+          a.alive &&
+          tileAt(state.floor, a.pos.x, a.pos.y) === 'stairs',
+      );
+      if (!someoneOnStairs) {
+        pushLog(state, 'まだ誰も階段にいない');
+        return;
+      }
+
+      if (!state.descendReady.includes(actor.id)) state.descendReady.push(actor.id);
+
+      const alive = state.actors.filter((a) => a.kind === 'player' && a.alive);
+      const ready = alive.filter((a) => state.descendReady.includes(a.id));
+      if (ready.length < alive.length) {
+        // 1人が踏むと全員が引きずられ、床のアイテムが無警告で消えていた事故の対策。
+        // 「待って、まだ薬草拾ってない」が必ず言えるようになる
+        pushLog(state, `降りる準備 ${ready.length}/${alive.length}`);
         return;
       }
       descend(state);

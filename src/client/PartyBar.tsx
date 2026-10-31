@@ -30,7 +30,7 @@ export function PartyBar({ state, myId }: Props) {
             .filter(Boolean)
             .join(' ')}
         >
-          {p.alive ? '🧑' : '💀'} {p.hp}/{p.maxHp}
+          <b>{p.slot}</b> {p.alive ? `${p.hp}/${p.maxHp}` : "倒れた"}
         </span>
       ))}
     </div>

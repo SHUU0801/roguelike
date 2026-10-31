@@ -39,6 +39,10 @@ export type TurnEffects = {
   selfAttacked: boolean;
   /** 自分が何か拾ったか */
   picked: boolean;
+  /** 自分が回復したか（薬草の音に使う） */
+  healed: boolean;
+  /** 自分が回復以外のものを使ったか */
+  usedItem: boolean;
   /** 階層が変わったか */
   descended: boolean;
   /** 同じ音を2回鳴らさないための目印 */
@@ -52,6 +56,8 @@ const EMPTY: TurnEffects = {
   anyHit: false,
   selfAttacked: false,
   picked: false,
+  healed: false,
+  usedItem: false,
   descended: false,
   turn: -1,
 };
@@ -131,6 +137,12 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
     const myItemsBefore = prev.items.filter((i) => i.ownerId === myId).length;
     const myItemsNow = state.items.filter((i) => i.ownerId === myId).length;
 
+    const meBefore = prev.actors.find((a) => a.id === myId);
+    const meNow = state.actors.find((a) => a.id === myId);
+    const healed = meBefore !== undefined && meNow !== undefined && meNow.hp > meBefore.hp;
+    // 拾ったわけではないのに持ち物が減った＝使った
+    const usedItem = myItemsNow < myItemsBefore;
+
     setFrame({
       effects,
       ghosts,
@@ -138,6 +150,8 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
       anyHit: damaged.length > 0,
       selfAttacked: effects.get(myId ?? "")?.kind === "lunge",
       picked: myItemsNow > myItemsBefore,
+      healed,
+      usedItem,
       descended: prev.floor.depth !== state.floor.depth,
       turn: state.turn,
     });

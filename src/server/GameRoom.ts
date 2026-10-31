@@ -34,7 +34,7 @@ export class GameRoom extends Room {
   onCreate(): void {
     this.onMessage<Intent>('intent', (client, intent) => {
       if (this.game.phase !== 'playing') return;
-      if (!this.isActive(client.sessionId)) return;
+      if (!this.canAct(client.sessionId)) return;
 
       this.intents.set(client.sessionId, intent);
       this.startTurnTimer();
@@ -98,8 +98,14 @@ export class GameRoom extends Room {
     );
   }
 
-  private isActive(id: string): boolean {
-    return this.activePlayers().some((a) => a.id === id);
+  /**
+   * 行動を送れるか。倒れた人も送れる（歩くだけだが偵察役になれる）。
+   * ただし activePlayers には入らないので、ターンを止めはしない。
+   */
+  private canAct(id: string): boolean {
+    return this.game.actors.some(
+      (a) => a.id === id && a.kind === 'player' && !this.away.has(a.id),
+    );
   }
 
   /**

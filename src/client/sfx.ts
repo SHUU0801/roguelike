@@ -135,6 +135,18 @@ export const sfx = {
     tone({ from: 930, dur: 0.08, type: 'sine', gain: 0.05, delay: 0.06 });
   },
 
+  /** 薬草を飲んだ。ごくりと飲んでから、柔らかく上がる */
+  heal(): void {
+    tone({ from: 220, to: 330, dur: 0.1, type: 'sine', gain: 0.05 });
+    tone({ from: 523, dur: 0.1, type: 'sine', gain: 0.05, delay: 0.09 });
+    tone({ from: 784, dur: 0.16, type: 'sine', gain: 0.045, delay: 0.17 });
+  },
+
+  /** 回復以外のものを使った（剣・盾・松明・巻物） */
+  use(): void {
+    tone({ from: 440, to: 660, dur: 0.12, type: 'triangle', gain: 0.05 });
+  },
+
   /** 階段を降りた */
   descend(): void {
     tone({ from: 300, to: 110, dur: 0.4, type: 'sine', gain: 0.07 });

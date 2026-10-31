@@ -20,7 +20,8 @@ export function updateVision(state: GameState): void {
   floor.visible = new Array<boolean>(floor.width * floor.height).fill(false);
 
   for (const actor of state.actors) {
-    if (actor.kind !== 'player' || !actor.alive) continue;
+    if (actor.kind !== 'player') continue;
+    // 倒れた人の位置からも見える。偵察役として仕事を残すため
     reveal(floor, actor.pos);
   }
 

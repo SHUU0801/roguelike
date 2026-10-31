@@ -134,6 +134,15 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
           ? itemDefOf(item.itemId).sprite
           : null;
 
+      // 倒れた仲間。actorAt は生きているものしか返さないので別に探す。
+      // どこで倒れたかが見えないと、起こしに行きようがない
+      const fallen =
+        visible && !occupant
+          ? state.actors.find(
+              (a) => a.kind === 'player' && !a.alive && a.pos.x === x && a.pos.y === y,
+            )
+          : undefined;
+
       const effect = occupant ? turnEffects.effects.get(occupant.id) : undefined;
       const ghost = turnEffects.ghosts.find((g) => g.pos.x === x && g.pos.y === y);
 
@@ -181,6 +190,16 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
                 />
               )
             : glyphAt(state, x, y, visible, remembered)}
+
+          {/* 倒れた仲間。薄く寝かせて描く */}
+          {sprites && fallen && (
+            <span className="sprite fallen" style={spriteStyle('hero')} />
+          )}
+
+          {/* 誰が誰かの目印。全員が同じ見た目なので番号が要る */}
+          {(occupant?.kind === 'player' || fallen) && (
+            <span className="slot">{(occupant ?? fallen)?.slot}</span>
+          )}
 
           {/* 敵の残り体力。絵文字だけだと「あと何発で倒せるか」が分からない */}
           {occupant?.kind === 'monster' && (

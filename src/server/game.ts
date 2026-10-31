@@ -10,22 +10,33 @@ import {
   type Pos,
 } from '../shared/types';
 import { createFloor, scatterPositions, spawnPos } from './dungeon';
-import { pick, randInt } from './random';
+import { pick, randInt, shuffle } from './random';
 
 /** フロアに出すモンスターの種類。深さに関係なく同じ顔ぶれ（v0 の範囲） */
 const MONSTER_POOL: SpeciesId[] = ['goblin', 'bat', 'slime'];
+
 /**
  * アイテムの出現。配列に重複して入れることで重み付けにしている。
  * 均等だと剣と盾が出すぎて、そのほとんどが無価値になる。
  */
 const ITEM_POOL: ItemId[] = [
-  "potion", "potion", "potion", "potion",
-  "torch", "torch", "torch",
-  "bomb", "bomb",
-  "sword", "sword",
-  "shield", "shield",
-  "scroll",
+  'potion', 'potion', 'potion', 'potion',
+  'torch', 'torch', 'torch',
+  'bomb', 'bomb',
+  'sword', 'sword',
+  'shield', 'shield',
+  'scroll',
 ];
+
+/**
+ * 開始時に1人1個ずつ配るもの。
+ *
+ * キャラクターに恒久的な性能差を付けない代わりに、これで役割を分ける
+ * （03_改善構成.md §2-4）。クラスと違って毎回ちがう形で起きるので、
+ * 「毎回ちがう持ち物でやりくりする」という芯と一致する。
+ * 人数が減っても壊れない（2人なら2個配るだけ）。
+ */
+const STARTING_KITS: ItemId[] = ['sword', 'shield', 'potion', 'bomb'];
 
 /** 持ち物の上限。スマホの画面に並ぶ数で決めている */
 export const MAX_INVENTORY = 6;
@@ -47,6 +58,8 @@ export function createInitialGame(): GameState {
     actors: [],
     items: [],
     log: ['仲間が来るのを待っている'],
+    descendReady: [],
+    floorStartedAt: 0,
     waitingFor: [],
     deadlineAt: null,
   };
@@ -54,62 +67,19 @@ export function createInitialGame(): GameState {
   return state;
 }
 
-/**
- * 1F の出現部屋にだけ、薬草1個とコウモリ1体を置く。
- *
- * 通常の配置は出現部屋を除外しているので、初見プレイヤーは
- * 「何もない暗い部屋から、真っ黒な通路を十数手歩く」ところから始まっていた。
- * どんなチュートリアル画面よりこれが効く。
- * 歩く → 拾う → 殴る が最初の30秒で全部起きる。
- */
-function seedFirstRoom(state: GameState): void {
-  const room = state.floor.rooms[0];
-  if (!room) return;
-
-  const spawn = spawnPos(state.floor);
-  const free: Pos[] = [];
-  for (let y = room.y; y < room.y + room.h; y++) {
-    for (let x = room.x; x < room.x + room.w; x++) {
-      if (tileAt(state.floor, x, y) !== "floor") continue;
-      const d = Math.abs(x - spawn.x) + Math.abs(y - spawn.y);
-      if (d < 2) continue; // 真隣には置かない
-      free.push({ x, y });
-    }
-  }
-  if (free.length === 0) return;
-
-  // 近いところに薬草。歩いているうちに勝手に拾える
-  free.sort(
-    (a, b) =>
-      Math.abs(a.x - spawn.x) + Math.abs(a.y - spawn.y) -
-      (Math.abs(b.x - spawn.x) + Math.abs(b.y - spawn.y)),
-  );
-  state.items.push({ id: newId("i"), itemId: "potion", pos: free[0], ownerId: null });
-
-  // 一番遠いところに一番弱い敵。倒せる成功体験を最初に置く
-  const far = free[free.length - 1];
-  if (free.length > 1) {
-    const species = SPECIES.bat;
-    state.actors.push({
-      id: newId("m"),
-      kind: "monster",
-      team: "M",
-      speciesId: "bat",
-      pos: far,
-      hp: species.maxHp,
-      maxHp: species.maxHp,
-      atk: species.atk,
-      def: species.def,
-      alive: true,
-      fuel: 0,
-    });
-  }
-}
-
-/** ロビーから探索を始める */
+/** ロビーから探索を始める。ここで開始アイテムを配る */
 export function startGame(state: GameState): void {
   if (state.phase !== 'lobby') return;
   state.phase = 'playing';
+
+  const kits = shuffle([...STARTING_KITS]);
+  state.actors
+    .filter((a) => a.kind === 'player')
+    .forEach((player, i) => {
+      const itemId = kits[i % kits.length];
+      state.items.push({ id: newId('i'), itemId, pos: null, ownerId: player.id });
+    });
+
   pushLog(state, 'ダンジョンに入った');
 }
 
@@ -117,6 +87,12 @@ export function addPlayer(state: GameState, id: string): void {
   if (state.actors.some((a) => a.id === id)) return;
 
   const species = speciesOf('hero');
+  const used = new Set(
+    state.actors.filter((a) => a.kind === 'player').map((a) => a.slot),
+  );
+  let slot = 1;
+  while (used.has(slot)) slot++;
+
   state.actors.push({
     id,
     kind: 'player',
@@ -131,17 +107,21 @@ export function addPlayer(state: GameState, id: string): void {
     def: species.def,
     alive: true,
     fuel: FUEL_START,
+    slot,
   });
-  pushLog(state, `${species.name}が1人加わった`);
+  pushLog(state, `${slot}番が加わった`);
 }
 
 export function removePlayer(state: GameState, id: string): void {
   state.actors = state.actors.filter((a) => a.id !== id);
   state.items = state.items.filter((i) => i.ownerId !== id);
+  state.descendReady = state.descendReady.filter((p) => p !== id);
 }
 
 /** 階段を降りる。最深部まで来ていたらクリア */
 export function descend(state: GameState): void {
+  const spent = state.turn - state.floorStartedAt;
+
   if (state.floor.depth >= MAX_DEPTH) {
     state.phase = 'won';
     pushLog(state, 'ダンジョンを踏破した！');
@@ -149,6 +129,8 @@ export function descend(state: GameState): void {
   }
 
   state.floor = createFloor(state.floor.depth + 1);
+  state.descendReady = [];
+  state.floorStartedAt = state.turn;
 
   // 床に落ちているものは置いていく。持ち物は持って降りる
   state.items = state.items.filter((i) => i.ownerId !== null);
@@ -163,7 +145,10 @@ export function descend(state: GameState): void {
   }
 
   populateFloor(state);
-  pushLog(state, `${state.floor.depth}F に降りた`);
+
+  // 1フロアに何ターンかかったかを出す。
+  // フロアの広さを決めるには、紙の上の試算ではなく実測が要る
+  pushLog(state, `${state.floor.depth}F に降りた（前のフロアに ${spent} ターン）`);
 }
 
 /** 出現位置。すでに誰かいたら近くの空きマスへずらす */
@@ -199,34 +184,70 @@ function populateFloor(state: GameState): void {
     const pos = spots[i];
 
     if (i < monsterCount) {
-      const speciesId = pick(MONSTER_POOL) ?? 'goblin';
-      const species = SPECIES[speciesId];
-      state.actors.push({
-        id: newId('m'),
-        kind: 'monster',
-        team: 'M',
-        speciesId,
-        pos,
-        hp: species.maxHp,
-        maxHp: species.maxHp,
-        atk: species.atk,
-        def: species.def,
-        alive: true,
-        fuel: 0, // モンスターは松明を持たない
-      });
+      spawnMonster(state, pick(MONSTER_POOL) ?? 'goblin', pos);
     } else {
-      const itemId = pick(ITEM_POOL) ?? 'potion';
-      const item: ItemInstance = {
+      state.items.push({
         id: newId('i'),
-        itemId,
+        itemId: pick(ITEM_POOL) ?? 'potion',
         pos,
         ownerId: null,
-      };
-      state.items.push(item);
+      });
     }
   }
 
   if (floor.depth === 1) seedFirstRoom(state);
+}
+
+function spawnMonster(state: GameState, speciesId: SpeciesId, pos: Pos): void {
+  const species = SPECIES[speciesId];
+  state.actors.push({
+    id: newId('m'),
+    kind: 'monster',
+    team: 'M',
+    speciesId,
+    pos,
+    hp: species.maxHp,
+    maxHp: species.maxHp,
+    atk: species.atk,
+    def: species.def,
+    alive: true,
+    fuel: 0, // モンスターは松明を持たない
+    slot: 0,
+  });
+}
+
+/**
+ * 1F の出現部屋にだけ、薬草1個とコウモリ1体を置く。
+ *
+ * 通常の配置は出現部屋を除外しているので、初見プレイヤーは
+ * 「何もない暗い部屋から、真っ黒な通路を十数手歩く」ところから始まっていた。
+ * どんなチュートリアル画面よりこれが効く。
+ * 歩く → 拾う → 殴る が最初の30秒で全部起きる。
+ */
+function seedFirstRoom(state: GameState): void {
+  const room = state.floor.rooms[0];
+  if (!room) return;
+
+  const spawn = spawnPos(state.floor);
+  const free: Pos[] = [];
+  for (let y = room.y; y < room.y + room.h; y++) {
+    for (let x = room.x; x < room.x + room.w; x++) {
+      if (tileAt(state.floor, x, y) !== 'floor') continue;
+      const d = Math.abs(x - spawn.x) + Math.abs(y - spawn.y);
+      if (d < 2) continue; // 真隣には置かない
+      free.push({ x, y });
+    }
+  }
+  if (free.length === 0) return;
+
+  const dist = (p: Pos) => Math.abs(p.x - spawn.x) + Math.abs(p.y - spawn.y);
+  free.sort((a, b) => dist(a) - dist(b));
+
+  // 近いところに薬草。歩いているうちに勝手に拾える
+  state.items.push({ id: newId('i'), itemId: 'potion', pos: free[0], ownerId: null });
+
+  // 一番遠いところに一番弱い敵。倒せる成功体験を最初に置く
+  if (free.length > 1) spawnMonster(state, 'bat', free[free.length - 1]);
 }
 
 /** 誰かの持ち物 */
@@ -239,3 +260,6 @@ export function pushLog(state: GameState, message: string): void {
   state.log.push(message);
   if (state.log.length > 20) state.log.shift();
 }
+
+// ITEMS は重み付きテーブルの妥当性チェックにだけ使う
+void ITEMS;

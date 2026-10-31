@@ -15,8 +15,16 @@ import { pick, randInt, shuffle } from './random';
  * v1.5 の鏡像ダンジョンも、ここに関数を1つ足すだけで済む形。
  */
 
-const FLOOR_W = 21;
-const FLOOR_H = 21;
+/**
+ * フロアの広さ。深いほど少し広い。
+ *
+ * 21 固定から縮めた。総ターンの7〜8割が「歩くだけ」で、同期ターンでは
+ * その待ち時間に人数が掛かる（03_改善構成.md §2-2）。
+ * ソロの進行感より、4人で黙々と歩く時間を削るほうを採った。
+ */
+function floorSize(depth: number): number {
+  return 15 + depth;
+}
 
 /** 部屋を置こうとする回数。多いほど部屋が増えるが、頭打ちになる */
 const ROOM_ATTEMPTS = 40;
@@ -24,6 +32,8 @@ const ROOM_MIN = 4;
 const ROOM_MAX = 7;
 
 export function createFloor(depth: number): Floor {
+  const FLOOR_W = floorSize(depth);
+  const FLOOR_H = floorSize(depth);
   const tiles: TileKind[] = new Array<TileKind>(FLOOR_W * FLOOR_H).fill('wall');
   const rooms: Rect[] = [];
 

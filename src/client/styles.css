@@ -547,3 +547,91 @@ button.wide.primary {
     animation: none;
   }
 }
+
+/* --- 段階C で足した見た目 --- */
+
+/* 倒れた仲間。横に寝かせて薄くする */
+.sprite.fallen {
+  transform: rotate(90deg) scale(0.85);
+  filter: grayscale(0.8) brightness(0.7);
+}
+
+/* 誰が誰かの番号。全員が同じ見た目なので、これが無いと
+   「HP 3 なのは誰か」が盤上と対応付けられない */
+.slot {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  color: #e8e8e8;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  pointer-events: none;
+}
+
+.party-chip b {
+  display: inline-block;
+  min-width: 12px;
+  text-align: center;
+  color: #e8c84a;
+}
+
+/* 持ち物の仲間タブ */
+.inv-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.inv-tabs button {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #9aa4b2;
+  background: #171b21;
+  border: 1px solid #2a2e35;
+  border-radius: 6px;
+}
+
+.inv-tabs button.on {
+  color: #e8e8e8;
+  background: #2f3947;
+  border-color: #4c586a;
+}
+
+.inv-tabs .count {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* 持ち物の1行。使う／置く を右に並べる */
+.inventory {
+  grid-template-columns: 1fr;
+  background: #171b21;
+  border-top: 1px solid #2a2e35;
+  padding: 10px 12px;
+}
+
+.inventory-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 14px;
+}
+
+.inventory-row .glyph { font-size: 17px; }
+.inventory-row .iname { flex: 1; }
+
+.inventory-row button {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #222730;
+  border: 1px solid #39404a;
+  border-radius: 6px;
+}

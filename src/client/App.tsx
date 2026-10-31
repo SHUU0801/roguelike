@@ -50,6 +50,8 @@ export function App() {
     if (turnEffects.turn < 0) return;
     if (turnEffects.descended) sfx.descend();
     if (turnEffects.picked) sfx.pickup();
+    if (turnEffects.healed) sfx.heal();
+    else if (turnEffects.usedItem) sfx.use();
     if (turnEffects.selfAttacked) sfx.attack();
     if (turnEffects.ghosts.length > 0) sfx.kill();
     else if (turnEffects.selfHurt) sfx.hurt();
@@ -122,8 +124,21 @@ export function App() {
   }
 
   const me = state.actors.find((a) => a.id === myId);
-  const onStairs = me ? tileAt(state.floor, me.pos.x, me.pos.y) === 'stairs' : false;
+  // 誰か1人でも階段にいれば、全員が「降りる」に同意できる。
+  // 全員を階段に集めさせると待ち時間が生まれる
+  const stairsReady = state.actors.some(
+    (a) => a.kind === "player" && a.alive && tileAt(state.floor, a.pos.x, a.pos.y) === "stairs",
+  );
   const hasItemHere = me ? itemAt(state, me.pos.x, me.pos.y) !== undefined : false;
+  const canRevive =
+    me !== undefined &&
+    me.alive &&
+    state.actors.some(
+      (a) =>
+        a.kind === "player" &&
+        !a.alive &&
+        Math.abs(a.pos.x - me.pos.x) + Math.abs(a.pos.y - me.pos.y) === 1,
+    );
 
   // 自分はもう動いたが、仲間を待っている状態
   const iActed = me !== undefined && me.alive && !state.waitingFor.includes(myId);
@@ -191,8 +206,10 @@ export function App() {
           <button onClick={() => location.reload()}>もう一度</button>
         </div>
       )}
-      {state.phase === 'playing' && me && !me.alive && (
-        <div className="banner lose">力尽きた。仲間の戦いを見守る</div>
+      {state.phase === "playing" && me && !me.alive && (
+        <div className="banner lose">
+          <span>力尽きた。動いて仲間の目になれる</span>
+        </div>
       )}
       {state.phase === 'playing' && iActed && waitingCount > 0 && (
         <div className="banner waiting">
@@ -226,8 +243,9 @@ export function App() {
         state={state}
         myId={myId}
         onAction={act}
-        onStairs={onStairs}
+        stairsReady={stairsReady}
         hasItemHere={hasItemHere}
+        canRevive={canRevive}
         playing={playing}
         inventoryOpen={inventoryOpen}
         onToggleInventory={() => setInventoryOpen((v) => !v)}
