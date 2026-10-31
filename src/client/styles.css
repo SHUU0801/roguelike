@@ -21,7 +21,10 @@ body {
 .app {
   max-width: 480px;
   margin: 0 auto;
-  min-height: 100dvh;
+  /* min-height ではなく height。これが無いと中身がはみ出したときに
+     ページ自体がスクロールし、盤面のタップがスクロールに食われる */
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -91,7 +94,10 @@ body {
 }
 
 .log {
+  /* 余った高さをここで吸収する。min-height:0 が無いと縮まない */
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: 10px 14px;
   border-top: 1px solid #2a2e35;
   font-size: 13px;
@@ -100,16 +106,18 @@ body {
 }
 
 .actions {
+  /* 4つを1段に。2段だと小さい端末で下2つが画面の外に出る */
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 12px;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
 }
 
 .actions button {
-  padding: 14px;
-  font-size: 15px;
+  padding: 13px 2px;
+  font-size: 13px;
+  white-space: nowrap;
   font-family: inherit;
   color: #e8e8e8;
   background: #222730;
