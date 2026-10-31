@@ -56,6 +56,9 @@ export function addPlayer(state: GameState, id: string): void {
   state.actors.push({
     id,
     kind: 'player',
+    // 協力モードではプレイヤーは全員同じチーム。
+    // v1.5 ではここが 'A' / 'B' に分かれる
+    team: 'A',
     speciesId: 'hero',
     pos: freeSpawn(state),
     hp: species.maxHp,
@@ -108,7 +111,8 @@ function freeSpawn(state: GameState): Pos {
       for (let dx = -r; dx <= r; dx++) {
         const x = base.x + dx;
         const y = base.y + dy;
-        if (tileAt(state.floor, x, y) === 'wall') continue;
+        const tile = tileAt(state.floor, x, y);
+        if (tile === 'wall' || tile === 'stairs') continue;
         if (actorAt(state, x, y)) continue;
         return { x, y };
       }
@@ -135,6 +139,7 @@ function populateFloor(state: GameState): void {
       state.actors.push({
         id: newId('m'),
         kind: 'monster',
+        team: 'M',
         speciesId,
         pos,
         hp: species.maxHp,

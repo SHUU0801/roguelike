@@ -5,6 +5,7 @@ import { Lobby } from './Lobby';
 import { PartyBar } from './PartyBar';
 import { useGame } from './useGame';
 import { useTurnEffects } from './useTurnEffects';
+import { isMuted, setMuted, sfx } from './sfx';
 import { itemAt, tileAt, type Dir, type Intent } from '../shared/types';
 
 /** 締め切りまでの残り秒。待っていないときは null */
@@ -33,6 +34,27 @@ export function App() {
     conn.status === 'open' ? conn.state : null,
     conn.status === 'open' ? conn.myId : null,
   );
+
+  const [muted, setMutedState] = useState(isMuted);
+
+  // ターンが進んだら、その中身に合わせて音を鳴らす。
+  // 音のファイルは使わず sfx.ts がその場で合成する
+  useEffect(() => {
+    if (turnEffects.turn < 0) return;
+    if (turnEffects.descended) sfx.descend();
+    if (turnEffects.picked) sfx.pickup();
+    if (turnEffects.selfAttacked) sfx.attack();
+    if (turnEffects.ghosts.length > 0) sfx.kill();
+    else if (turnEffects.selfHurt) sfx.hurt();
+    else if (turnEffects.anyHit) sfx.hit();
+  }, [turnEffects]);
+
+  // 決着の音は1回だけ
+  const phase = conn.status === 'open' ? conn.state.phase : null;
+  useEffect(() => {
+    if (phase === 'won') sfx.win();
+    if (phase === 'lost') sfx.lose();
+  }, [phase]);
 
   // PC 向けの矢印キー操作。スマホのタップと同じ Intent を送るだけ。
   useEffect(() => {
@@ -120,6 +142,17 @@ export function App() {
           )}
         </span>
         <span className="turn">{state.turn} ターン</span>
+        <button
+          className="mute"
+          aria-label={muted ? '音を出す' : '音を消す'}
+          onClick={() => {
+            const next = !muted;
+            setMuted(next);
+            setMutedState(next);
+          }}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
       </header>
 
       <PartyBar state={state} myId={myId} />

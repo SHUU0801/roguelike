@@ -441,3 +441,35 @@ button.wide.primary {
     display: none;
   }
 }
+
+/* 敵の残り体力。マスの下に細い帯で出す。
+   絵文字／ドット絵だけでは「あと何発で倒せるか」が分からないため */
+.hpbar {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hpbar i {
+  display: block;
+  height: 100%;
+  background: #d4594e;
+  transition: width 0.18s ease-out;
+}
+
+/* 音の入切。ステータス行の右端に小さく置く */
+.mute {
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: #9aa4b2;
+  background: none;
+  border: 1px solid #39404a;
+  border-radius: 6px;
+}

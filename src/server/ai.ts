@@ -1,6 +1,7 @@
 import {
   DIR_DELTA,
   actorAt,
+  isHostile,
   roomAt,
   tileAt,
   type Actor,
@@ -40,7 +41,7 @@ export function monsterAct(state: GameState, monster: Actor): void {
 /** 見えているプレイヤーのうち、いちばん近い相手 */
 function visibleTarget(state: GameState, monster: Actor): Actor | undefined {
   const players = state.actors.filter(
-    (a) => a.kind === 'player' && a.alive && canSee(state, monster.pos, a.pos),
+    (a) => a.alive && isHostile(monster, a) && canSee(state, monster.pos, a.pos),
   );
   if (players.length === 0) return undefined;
 

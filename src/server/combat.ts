@@ -20,9 +20,13 @@ export function calcDamage(
   defender: Actor,
   opts: { pvp: boolean },
 ): number {
-  const base = Math.max(1, attacker.atk - defender.def);
-  if (opts.pvp) return base; // 対戦: 確定値
-  return base + randInt(0, 2); // 協力: 少し振れてドラマになる
+  // 乱数を加算ではなく振れ幅にする。
+  // 旧: max(1, atk-def) + randInt(0,2) だと、加算項が def で減らないため
+  // 防御力に天井ができていた（盾2枚目の効果が数値上ゼロ）。
+  // この形なら def が最後まで効き、対戦の確定値が協力の中央値と一致する。
+  const base = attacker.atk - defender.def;
+  if (opts.pvp) return Math.max(1, base); // 対戦: 確定値
+  return Math.max(1, base + randInt(-1, 1)); // 協力: 少し振れてドラマになる
 }
 
 /**

@@ -33,9 +33,28 @@ export type TurnEffects = {
   ghosts: Ghost[];
   /** 自分が殴られたか。画面全体を赤く光らせるのに使う */
   selfHurt: boolean;
+  /** 誰かが殴られたか（効果音に使う） */
+  anyHit: boolean;
+  /** 自分が攻撃したか */
+  selfAttacked: boolean;
+  /** 自分が何か拾ったか */
+  picked: boolean;
+  /** 階層が変わったか */
+  descended: boolean;
+  /** 同じ音を2回鳴らさないための目印 */
+  turn: number;
 };
 
-const EMPTY: TurnEffects = { effects: new Map(), ghosts: [], selfHurt: false };
+const EMPTY: TurnEffects = {
+  effects: new Map(),
+  ghosts: [],
+  selfHurt: false,
+  anyHit: false,
+  selfAttacked: false,
+  picked: false,
+  descended: false,
+  turn: -1,
+};
 
 /** 残像を残す時間。CSS の die アニメーションと合わせる */
 const GHOST_MS = 380;
@@ -109,7 +128,19 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
       }
     }
 
-    setFrame({ effects, ghosts, selfHurt });
+    const myItemsBefore = prev.items.filter((i) => i.ownerId === myId).length;
+    const myItemsNow = state.items.filter((i) => i.ownerId === myId).length;
+
+    setFrame({
+      effects,
+      ghosts,
+      selfHurt,
+      anyHit: damaged.length > 0,
+      selfAttacked: effects.get(myId ?? "")?.kind === "lunge",
+      picked: myItemsNow > myItemsBefore,
+      descended: prev.floor.depth !== state.floor.depth,
+      turn: state.turn,
+    });
 
     if (ghosts.length === 0) return;
     const timer = setTimeout(

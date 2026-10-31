@@ -9,6 +9,12 @@ export type Pos = { x: number; y: number };
 
 export type Dir = 'n' | 's' | 'e' | 'w';
 
+/** プレイヤーのチーム。対戦（v1.5）では2つに分かれる */
+export type TeamId = 'A' | 'B';
+
+/** 盤上の所属。モンスターはどちらの味方でもないので 'M' */
+export type Faction = TeamId | 'M';
+
 /** 部屋の矩形。視界の処理とモンスターの配置に使う */
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -41,6 +47,12 @@ export const TURN_LIMIT_MS = 20_000;
 export type Actor = {
   id: string;
   kind: 'player' | 'monster';
+  /**
+   * 敵味方の判定に使う。協力モードではプレイヤーは全員 'A'。
+   * kind で判定しないのが要点（02_v1設計.md §6 の申し送り）。
+   * 対戦では 'A' と 'B' に分かれるが、判定する側のコードは変えなくて済む。
+   */
+  team: Faction;
   speciesId: string; // 性能は shared/monsters.ts の表を引く
   pos: Pos;
   hp: number;
@@ -121,6 +133,15 @@ export function roomAt(floor: Floor, x: number, y: number): Rect | undefined {
   return floor.rooms.find(
     (r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h,
   );
+}
+
+/**
+ * 敵対しているか。**kind では判定しない。**
+ * これ1つに閉じておけば、v1.5 でプレイヤー同士を戦わせるときも
+ * 呼び出し側を書き換えずに済む。
+ */
+export function isHostile(a: Actor, b: Actor): boolean {
+  return a.team !== b.team;
 }
 
 /** その座標にいる、生きている Actor */

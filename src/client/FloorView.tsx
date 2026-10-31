@@ -167,6 +167,17 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
                 />
               )
             : glyphAt(state, x, y, visible, remembered)}
+
+          {/* 敵の残り体力。絵文字だけだと「あと何発で倒せるか」が分からない */}
+          {occupant?.kind === 'monster' && (
+            <span className="hpbar">
+              <i
+                style={{
+                  width: `${Math.max(0, Math.min(100, (occupant.hp / occupant.maxHp) * 100))}%`,
+                }}
+              />
+            </span>
+          )}
         </div>,
       );
     }
