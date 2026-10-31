@@ -8,6 +8,7 @@
 - [02_v1設計.md](02_v1設計.md) — マルチプレイの設計
 - [03_改善構成.md](03_改善構成.md) — **次に何をどの順でやるか**
 - [04_絵とアニメの方針.md](04_絵とアニメの方針.md) — ドット絵とアニメーションの入れ方
+- [CREDITS.md](CREDITS.md) — 素材の出所とライセンス
 
 ---
 
@@ -58,6 +59,19 @@ npm run check
 ```bash
 npm run typecheck
 ```
+
+### 絵を描き直す
+
+```bash
+npm run sprites
+```
+
+`tools/make-sprites.mjs` の中の文字絵を書き換えて実行すると、
+`public/sprites/tiles.png` が作り直される。1文字 = 1ピクセル。
+
+本物の素材に差し替えるときは、同じ並び順（`src/shared/sprites.ts` の `SPRITE_INDEX`）で
+16×16 のタイルを並べた PNG を同じ場所に置くだけでいい。
+ライセンスは [CREDITS.md](CREDITS.md) に記録すること。
 
 ---
 

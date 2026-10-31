@@ -1,5 +1,7 @@
+import { useEffect, useState, type CSSProperties } from 'react';
 import { itemDefOf } from '../shared/items';
 import { speciesOf } from '../shared/monsters';
+import { SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../shared/sprites';
 import {
   actorAt,
   dirTo,
@@ -22,6 +24,41 @@ import {
 const VIEW_W = 9;
 const VIEW_H = 11;
 
+/**
+ * スプライト1枚分の背景指定。
+ *
+ * ピクセル計算ではなく % で切り出す。マスの大きさが変わっても追従する。
+ * 拡大でぼやけないよう、ドット絵側は CSS の image-rendering: pixelated に任せる。
+ */
+function spriteStyle(id: SpriteId): CSSProperties {
+  const index = SPRITE_INDEX[id];
+  const col = index % SHEET.cols;
+  const row = Math.floor(index / SHEET.cols);
+  return {
+    backgroundImage: `url(${SHEET.url})`,
+    backgroundSize: `${SHEET.cols * 100}% ${SHEET.rows * 100}%`,
+    backgroundPosition: `${(col / Math.max(1, SHEET.cols - 1)) * 100}% ${
+      (row / Math.max(1, SHEET.rows - 1)) * 100
+    }%`,
+  };
+}
+
+/**
+ * スプライトシートが読めたか。
+ *
+ * 読めなければ絵文字に戻す。素材を差し替える作業中に画面が真っ暗になると
+ * 何が起きているか分からなくなるので、保険を残してある。
+ */
+function useSprites(): boolean {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const img = new Image();
+    img.onerror = () => setFailed(true);
+    img.src = SHEET.url;
+  }, []);
+  return !failed;
+}
+
 type Props = {
   state: GameState;
   myId: string;
@@ -41,6 +78,7 @@ type Props = {
  */
 export function FloorView({ state, myId, onMove }: Props) {
   const { floor } = state;
+  const sprites = useSprites();
   const me = state.actors.find((a) => a.id === myId);
 
   // 自キャラを常に中央に置く。端では盤外が映るが、盤外は真っ黒になるので問題ない
@@ -55,50 +93,52 @@ export function FloorView({ state, myId, onMove }: Props) {
 
       const visible = visibleAt(floor, x, y);
       const remembered = !visible && seenAt(floor, x, y);
+      const known = visible || remembered;
       const tile = tileAt(floor, x, y);
 
       const dir = me ? dirTo(me.pos, { x, y }) : null;
-      const movable = dir !== null && tile !== 'wall' && (visible || remembered);
+      const movable = dir !== null && tile !== 'wall' && known;
 
-      // 自分と仲間が同じ絵文字なので、枠の色で見分ける
+      // 自分と仲間は同じ見た目なので、枠の色で見分ける
       const occupant = visible ? actorAt(state, x, y) : undefined;
       const mark =
         occupant?.kind === 'player' ? (occupant.id === myId ? 'me' : 'ally') : '';
 
+      // 乗っているもの（Actor > アイテム）。記憶だけのマスには出さない
+      const item = visible && !occupant ? itemAt(state, x, y) : undefined;
+      const topSprite: SpriteId | null = occupant
+        ? speciesOf(occupant.speciesId).sprite
+        : item
+          ? itemDefOf(item.itemId).sprite
+          : null;
+
       cells.push(
         <div
           key={`${x},${y}`}
-          className={[
-            'cell',
-            visible || remembered ? tile : 'unseen',
-            remembered ? 'dim' : '',
-            movable ? 'movable' : '',
-            mark,
-          ]
+          className={['cell', known ? tile : 'unseen', remembered ? 'dim' : '', movable ? 'movable' : '', mark]
             .filter(Boolean)
             .join(' ')}
+          style={sprites && known ? spriteStyle(TILE_SPRITE[tile]) : undefined}
           onClick={movable && dir ? () => onMove(dir) : undefined}
         >
-          {glyphAt(state, x, y, visible, remembered)}
+          {sprites
+            ? topSprite && <span className="sprite" style={spriteStyle(topSprite)} />
+            : glyphAt(state, x, y, visible, remembered)}
         </div>,
       );
     }
   }
 
   return (
-    <div
-      className="floor"
-      style={{ gridTemplateColumns: `repeat(${VIEW_W}, 1fr)` }}
-    >
+    <div className="floor" style={{ gridTemplateColumns: `repeat(${VIEW_W}, 1fr)` }}>
       {cells}
     </div>
   );
 }
 
 /**
- * そのマスに出す絵文字。Actor > アイテム > 地形 の優先順。
+ * スプライトシートが読めなかったときの絵文字。
  * 「見たことがあるだけ」のマスには、動くもの（Actor・アイテム）を出さない。
- * 記憶に残るのは地形だけ、という扱い。
  */
 function glyphAt(
   state: GameState,

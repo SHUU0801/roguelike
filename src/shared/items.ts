@@ -6,19 +6,23 @@
  * 先に印を付けておけば、v1.5 でこの表を見るだけで判断できる。
  */
 
+import type { SpriteId } from './sprites';
+
 export type ItemDef = {
   name: string;
+  /** 画像が読めなかったときの保険 */
   glyph: string;
+  sprite: SpriteId;
   /** 対戦でそのまま使えるか（false = 効果が運に依存する） */
   pvpSafe: boolean;
 };
 
 export const ITEMS = {
-  potion: { name: '薬草', glyph: '🧪', pvpSafe: true },
-  bomb: { name: '爆弾', glyph: '💣', pvpSafe: true },
-  sword: { name: '剣', glyph: '🗡️', pvpSafe: true },
-  shield: { name: '盾', glyph: '🛡️', pvpSafe: true },
-  scroll: { name: '転移の巻物', glyph: '📜', pvpSafe: false },
+  potion: { name: '薬草', glyph: '🧪', sprite: 'potion', pvpSafe: true },
+  bomb: { name: '爆弾', glyph: '💣', sprite: 'bomb', pvpSafe: true },
+  sword: { name: '剣', glyph: '🗡️', sprite: 'sword', pvpSafe: true },
+  shield: { name: '盾', glyph: '🛡️', sprite: 'shield', pvpSafe: true },
+  scroll: { name: '転移の巻物', glyph: '📜', sprite: 'scroll', pvpSafe: false },
 } as const satisfies Record<string, ItemDef>;
 
 export type ItemId = keyof typeof ITEMS;

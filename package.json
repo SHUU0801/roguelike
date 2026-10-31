@@ -9,7 +9,8 @@
     "dev:client": "vite",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "check": "tsx check.ts"
+    "check": "tsx check.ts",
+    "sprites": "node tools/make-sprites.mjs"
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.9",

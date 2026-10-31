@@ -59,32 +59,50 @@ body {
 }
 
 .cell {
+  position: relative;
   aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 3px;
-  font-size: clamp(13px, 4.2vw, 24px);
+  /* 絵文字はスプライトシートが読めなかったときの保険。少し大きめにする */
+  font-size: clamp(18px, 7vw, 30px);
   line-height: 1;
   user-select: none;
+  /* ドット絵を拡大してもぼやけさせない */
+  image-rendering: pixelated;
+  background-repeat: no-repeat;
+}
+
+/* マスの上に乗るもの（Actor・アイテム）。地形の背景の上に重ねる */
+.cell .sprite {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
 }
 
 .cell.wall {
-  background: #2a2e35;
+  background-color: #171b21;
 }
 
 .cell.floor,
 .cell.stairs {
-  background: #1b1f26;
+  background-color: #2b3340;
 }
 
 .cell.unseen {
-  background: #0d0f12;
+  background-color: #0a0b0e;
 }
 
-/* 見たことはあるが、今は見えていないマス。地形の記憶だけを暗く残す */
+/*
+ * 見たことはあるが、今は見えていないマス。
+ * 以前は brightness(0.55) だったが、元の床が暗すぎて未踏の黒との差が
+ * RGB で 2〜3 しかなく、画面上では見えていなかった。
+ * 地形を明るくした上で、もう少し強く落とす。
+ */
 .cell.dim {
-  filter: brightness(0.55);
+  filter: brightness(0.5) saturate(0.6);
 }
 
 /* 今タップできるマス（隣接していて壁ではない） */
