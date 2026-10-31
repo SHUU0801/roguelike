@@ -1,14 +1,15 @@
 /**
- * 仮スプライトシートを作る。  npm run sprites
+ * スプライトシートを作る。  npm run sprites
  *
  * 絵を文字で書いて PNG にする。外部ライブラリを使わない。
- *
- * これは「仮」。0x72 DungeonTileset II（CC0, 16x16）などの本物の素材を
- * public/sprites/tiles.png に置けば、そのまま差し替わる。
- * 並び順は src/shared/sprites.ts の SPRITE_INDEX に合わせること。
- *
- * 絵を直したいときは下の ART を書き換えて npm run sprites。
  * 1文字 = 1ピクセル。'.' は透明。
+ *
+ * 生き物は2コマ。LAYOUT で隣り合わせに並べてあり、CSS 側が
+ * background-position-x を steps() で切り替えてパラパラ動かす。
+ *
+ * 本物の素材（0x72 DungeonTileset II など、CC0, 16x16）に差し替えるときは、
+ * LAYOUT と同じ並び順の PNG を public/sprites/tiles.png に置けばいい。
+ * 並び順は src/shared/sprites.ts の SPRITE_INDEX と必ず一致させること。
  */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -16,7 +17,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TILE = 16;
-const COLS = 6;
+const COLS = 8;
+
+/** シート上の並び。2コマあるものは <名前> と <名前>_b が隣り合う */
+const LAYOUT = [
+  'floor', 'wall', 'stairs', 'potion', 'bomb', 'sword', 'shield', 'scroll',
+  'hero', 'hero_b', 'goblin', 'goblin_b', 'bat', 'bat_b', 'slime', 'slime_b',
+];
 
 const PALETTE = {
   '.': null, // 透明
@@ -42,93 +49,114 @@ const PALETTE = {
   4: '#222730', // レンガ（床より暗い）
 };
 
-/** 並び順 = src/shared/sprites.ts の SPRITE_INDEX */
-const ART = [
-  // 0 floor
-  [
+const ART = {
+  floor: [
     '1111111111111111', '1111121111111111', '1111111111112111', '1211111111111111',
     '1111111121111111', '1111111111111111', '1111211111111111', '1111111111121111',
     '1111111111111111', '1121111111111111', '1111111111111111', '1111112111111111',
     '1111111111111121', '1111111111111111', '1112111111111111', '1111111111111111',
   ],
-  // 1 wall
-  [
+  wall: [
     '3333333333333333', '3444443444444443', '3444443444444443', '3444443444444443',
     '3333333333333333', '3444444444344443', '3444444444344443', '3444444444344443',
     '3333333333333333', '3444443444444443', '3444443444444443', '3444443444444443',
     '3333333333333333', '3444444444344443', '3444444444344443', '3333333333333333',
   ],
-  // 2 stairs
-  [
+  stairs: [
     '1111111111111111', '1333333333333331', '13LLLLLLLLLLLL31', '13L3333333333L31',
     '13L3GGGGGGGG3L31', '13L3G333333G3L31', '13L3G3LLLL3G3L31', '13L3G3LKKL3G3L31',
     '13L3G3LKKL3G3L31', '13L3G3LLLL3G3L31', '13L3G333333G3L31', '13L3GGGGGGGG3L31',
     '13L3333333333L31', '13LLLLLLLLLLLL31', '1333333333333331', '1111111111111111',
   ],
-  // 3 hero
-  [
-    '................', '.....KKKKKK.....', '....KLLLLLLK....', '....KLWWWWLK....',
-    '....KLWSSWLK....', '....KLSSSSLK....', '.....KSSSSK.....', '....KKBBBBKK....',
-    '...KBBBBBBBBK...', '...KBBWBBWBBK...', '...KBBBBBBBBK...', '....KBBBBBBK....',
-    '....KDD..DDK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
-  ],
-  // 4 goblin
-  [
-    '................', '................', '....KKKKKKKK....', '...KNNNNNNNNK...',
-    '..KNNNNNNNNNNK..', '..KNnNNNNNNnNK..', '..KNNWNNNNWNNK..', '..KNNWKNNKWNNK..',
-    '..KNNNNNNNNNNK..', '..KNNKKKKKKNNK..', '...KNNNNNNNNK...', '....KNNNNNNK....',
-    '....KDDNNDDK....', '.....KDK.KDK....', '................', '................',
-  ],
-  // 5 bat
-  [
-    '................', '................', '..K..........K..', '..KK........KK..',
-    '..KPK......KPK..', '..KPPK....KPPK..', '.KPPPPK..KPPPPK.', '.KPPPPPKKPPPPPK.',
-    '.KPPPKKPPKKPPPK.', '..KPK.KPPK.KPK..', '...K..KWWK..K...', '......KPPK......',
-    '.......KK.......', '................', '................', '................',
-  ],
-  // 6 slime
-  [
-    '................', '................', '................', '......KKKK......',
-    '....KKNNNNKK....', '...KNNNNNNNNK...', '..KNNNNNNNNNNK..', '..KNNWNNNNWNNK..',
-    '.KNNNNNNNNNNNNK.', '.KNNNNNNNNNNNNK.', '.KnNNNNNNNNNNnK.', '.KnnNNNNNNNNnnK.',
-    '.KnnnnnnnnnnnnK.', '..KKKKKKKKKKKK..', '................', '................',
-  ],
-  // 7 potion
-  [
+  potion: [
     '................', '......KKKK......', '......KLLK......', '......KLLK......',
     '.....KKLLKK.....', '.....KLLLLK.....', '....KLLLLLLK....', '...KLLWLLLLLK...',
     '...KLRRRRRRLK...', '..KLRRRRRRRRLK..', '..KLRRRRRRRRLK..', '..KLRRRRRRRRLK..',
     '..KLRRRRRRRRLK..', '...KLRRRRRRLK...', '....KKKKKKKK....', '................',
   ],
-  // 8 bomb
-  [
+  bomb: [
     '................', '............KG..', '...........KGK..', '..........KGK...',
     '.........KOK....', '.......KKKK.....', '.....KKDDDDKK...', '....KDDDDDDDDK..',
     '...KDDLDDDDDDDK.', '...KDLDDDDDDDDK.', '...KDDDDDDDDDDK.', '...KDDDDDDDDDDK.',
     '....KDDDDDDDDK..', '.....KKDDDDKK...', '.......KKKK.....', '................',
   ],
-  // 9 sword
-  [
+  sword: [
     '.......KK.......', '......KLWK......', '......KLWK......', '......KLWK......',
     '......KLWK......', '......KLWK......', '......KLWK......', '......KLWK......',
     '......KLWK......', '...KKKKLWKKKK...', '...KGGGGGGGGK...', '...KKKKooKKKK...',
     '......KooK......', '......KooK......', '......KKKK......', '................',
   ],
-  // 10 shield
-  [
+  shield: [
     '................', '..KKKKKKKKKKKK..', '..KLLLLLLLLLLK..', '..KLBBBBBBBBLK..',
     '..KLBBBYYBBBLK..', '..KLBBYYYYBBLK..', '..KLBYYYYYYBLK..', '..KLBBYYYYBBLK..',
     '..KLBBBYYBBBLK..', '..KLBBBBBBBBLK..', '..KLBBBBBBBBLK..', '...KLBBBBBBLK...',
     '....KLBBBBLK....', '.....KLBBLK.....', '......KLLK......', '.......KK.......',
   ],
-  // 11 scroll
-  [
+  scroll: [
     '................', '................', '..KGGGGGGGGGGK..', '..KGWWWWWWWWGK..',
     '..KWWWWWWWWWWK..', '..KWKKKKKKKKWK..', '..KWWWWWWWWWWK..', '..KWKKKKKKKWWK..',
     '..KWWWWWWWWWWK..', '..KWKKKKKKKKWK..', '..KWWWWWWWWWWK..', '..KWKKKKKKWWWK..',
     '..KGWWWWWWWWGK..', '..KGGGGGGGGGGK..', '................', '................',
   ],
-];
+
+  // --- 生き物は2コマ。_b が2コマ目 ---
+
+  hero: [
+    '................', '.....KKKKKK.....', '....KLLLLLLK....', '....KLWWWWLK....',
+    '....KLWSSWLK....', '....KLSSSSLK....', '.....KSSSSK.....', '....KKBBBBKK....',
+    '...KBBBBBBBBK...', '...KBBWBBWBBK...', '...KBBBBBBBBK...', '....KBBBBBBK....',
+    '....KDD..DDK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+  // 全体を1ドット下げる。これだけで息をしているように見える
+  hero_b: [
+    '................', '................', '.....KKKKKK.....', '....KLLLLLLK....',
+    '....KLWWWWLK....', '....KLWSSWLK....', '....KLSSSSLK....', '.....KSSSSK.....',
+    '....KKBBBBKK....', '...KBBBBBBBBK...', '...KBBWBBWBBK...', '...KBBBBBBBBK...',
+    '....KBBBBBBK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+
+  goblin: [
+    '................', '................', '....KKKKKKKK....', '...KNNNNNNNNK...',
+    '..KNNNNNNNNNNK..', '..KNnNNNNNNnNK..', '..KNNWNNNNWNNK..', '..KNNWKNNKWNNK..',
+    '..KNNNNNNNNNNK..', '..KNNKKKKKKNNK..', '...KNNNNNNNNK...', '....KNNNNNNK....',
+    '....KDDNNDDK....', '.....KDK.KDK....', '................', '................',
+  ],
+  // まばたき
+  goblin_b: [
+    '................', '................', '....KKKKKKKK....', '...KNNNNNNNNK...',
+    '..KNNNNNNNNNNK..', '..KNnNNNNNNnNK..', '..KNNnNNNNnNNK..', '..KNNNNNNNNNNK..',
+    '..KNNNNNNNNNNK..', '..KNNKKKKKKNNK..', '...KNNNNNNNNK...', '....KNNNNNNK....',
+    '....KDDNNDDK....', '.....KDK.KDK....', '................', '................',
+  ],
+
+  bat: [
+    '................', '................', '..K..........K..', '..KK........KK..',
+    '..KPK......KPK..', '..KPPK....KPPK..', '.KPPPPK..KPPPPK.', '.KPPPPPKKPPPPPK.',
+    '.KPPPKKPPKKPPPK.', '..KPK.KPPK.KPK..', '...K..KWWK..K...', '......KPPK......',
+    '.......KK.......', '................', '................', '................',
+  ],
+  // 羽を下ろす
+  bat_b: [
+    '................', '................', '................', '..KK........KK..',
+    '..KPK......KPK..', '..KPPK....KPPK..', '..KPPPK..KPPPK..', '.KPPPPPKKPPPPPK.',
+    '.KPPPKKPPKKPPPK.', '..KPK.KPPK.KPK..', '...K..KWWK..K...', '......KPPK......',
+    '.......KK.......', '................', '................', '................',
+  ],
+
+  slime: [
+    '................', '................', '................', '......KKKK......',
+    '....KKNNNNKK....', '...KNNNNNNNNK...', '..KNNNNNNNNNNK..', '..KNNWNNNNWNNK..',
+    '.KNNNNNNNNNNNNK.', '.KNNNNNNNNNNNNK.', '.KnNNNNNNNNNNnK.', '.KnnNNNNNNNNnnK.',
+    '.KnnnnnnnnnnnnK.', '..KKKKKKKKKKKK..', '................', '................',
+  ],
+  // 潰れる
+  slime_b: [
+    '................', '................', '................', '................',
+    '.....KKKKKK.....', '...KKNNNNNNKK...', '..KNNNNNNNNNNK..', '..KNNWNNNNWNNK..',
+    '.KNNNNNNNNNNNNK.', '.KnNNNNNNNNNNnK.', '.KnnNNNNNNNNnnK.', '.KnnnnnnnnnnnnK.',
+    '..KKKKKKKKKKKK..', '................', '................', '................',
+  ],
+};
 
 // --- ここから下は PNG を書き出すだけ ---
 
@@ -165,18 +193,18 @@ function chunk(type, data) {
   return Buffer.concat([len, body, crc]);
 }
 
-function toPng(width, height, pixels /* RGBA Uint8Array */) {
-  const raw = Buffer.alloc((width * 4 + 1) * height);
+function toPng(width, height, pixels) {
+  const stride = width * 4 + 1;
+  const raw = Buffer.alloc(stride * height);
   for (let y = 0; y < height; y++) {
-    raw[y * (width * 4 + 1)] = 0; // フィルタなし
-    pixels.subarray(y * width * 4, (y + 1) * width * 4)
-      .forEach((v, i) => { raw[y * (width * 4 + 1) + 1 + i] = v; });
+    raw[y * stride] = 0; // フィルタなし
+    for (let i = 0; i < width * 4; i++) raw[y * stride + 1 + i] = pixels[y * width * 4 + i];
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;   // bit depth
-  ihdr[9] = 6;   // RGBA
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // RGBA
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
@@ -185,22 +213,25 @@ function toPng(width, height, pixels /* RGBA Uint8Array */) {
   ]);
 }
 
-const rows = Math.ceil(ART.length / COLS);
+const rows = Math.ceil(LAYOUT.length / COLS);
 const W = COLS * TILE;
 const H = rows * TILE;
 const px = new Uint8Array(W * H * 4);
 
-ART.forEach((art, index) => {
-  if (art.length !== TILE) throw new Error(`スプライト ${index}: ${art.length} 行（${TILE} 行であること）`);
+LAYOUT.forEach((name, index) => {
+  const art = ART[name];
+  if (!art) throw new Error(`'${name}' の絵が ART にない`);
+  if (art.length !== TILE) throw new Error(`'${name}': ${art.length} 行（${TILE} 行であること）`);
+
   const ox = (index % COLS) * TILE;
   const oy = Math.floor(index / COLS) * TILE;
 
   art.forEach((line, y) => {
     if (line.length !== TILE) {
-      throw new Error(`スプライト ${index} の ${y + 1} 行目: ${line.length} 文字（${TILE} 文字であること）`);
+      throw new Error(`'${name}' の ${y + 1} 行目: ${line.length} 文字（${TILE} 文字であること）`);
     }
     [...line].forEach((ch, x) => {
-      if (!(ch in PALETTE)) throw new Error(`スプライト ${index}: 未定義の文字 '${ch}'`);
+      if (!(ch in PALETTE)) throw new Error(`'${name}': 未定義の文字 '${ch}'`);
       const hex = PALETTE[ch];
       if (hex === null) return; // 透明
       const [r, g, b] = rgb(hex);
@@ -213,4 +244,5 @@ ART.forEach((art, index) => {
 const out = resolve(dirname(fileURLToPath(import.meta.url)), '../public/sprites/tiles.png');
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, toPng(W, H, px));
-console.log(`${out} に書き出した（${W}x${H}, ${ART.length} 枚）`);
+console.log(`${out} に書き出した（${W}x${H}, ${LAYOUT.length} 枚 / ${COLS} 列）`);
+console.log(`並び: ${LAYOUT.join(', ')}`);

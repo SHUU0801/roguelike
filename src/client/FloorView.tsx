@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { itemDefOf } from '../shared/items';
 import { speciesOf } from '../shared/monsters';
-import { SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../shared/sprites';
+import { ANIMATED, SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../shared/sprites';
 import {
   actorAt,
   dirTo,
@@ -35,13 +35,21 @@ function spriteStyle(id: SpriteId): CSSProperties {
   const index = SPRITE_INDEX[id];
   const col = index % SHEET.cols;
   const row = Math.floor(index / SHEET.cols);
-  return {
+  const atCol = (c: number) => `${(c / Math.max(1, SHEET.cols - 1)) * 100}%`;
+
+  const style: Record<string, string> = {
     backgroundImage: `url(${SHEET.url})`,
     backgroundSize: `${SHEET.cols * 100}% ${SHEET.rows * 100}%`,
-    backgroundPosition: `${(col / Math.max(1, SHEET.cols - 1)) * 100}% ${
-      (row / Math.max(1, SHEET.rows - 1)) * 100
-    }%`,
+    backgroundPosition: `${atCol(col)} ${(row / Math.max(1, SHEET.rows - 1)) * 100}%`,
   };
+
+  // 2コマあるものは、切り替え先を CSS 変数で渡す。
+  // 2コマ目はシート上の隣の枠なので、横位置だけ動かせばいい。
+  if (ANIMATED.has(id)) {
+    style['--fx0'] = atCol(col);
+    style['--fx1'] = atCol(col + 1);
+  }
+  return style as CSSProperties;
 }
 
 /** 動きの向きは CSS 変数で渡す。キーフレーム側がこれを掛けて使う */
@@ -149,6 +157,7 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
                   key={`${occupant?.id ?? 'item'}-${state.turn}`}
                   className={[
                     'sprite',
+                    ANIMATED.has(topSprite) ? 'anim' : '',
                     occupant?.id === myId ? 'self' : '',
                     effect ? effect.kind : '',
                   ]

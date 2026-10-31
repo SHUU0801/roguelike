@@ -336,7 +336,18 @@ button.wide.primary {
  * 同じ動きでも毎ターンきちんと再生される。
  */
 
-/* 自キャラはゆっくり呼吸する。待機のコマが無くても生きて見える */
+/* 生き物の2コマ。シート上の隣の枠へ横位置をずらすだけ。
+   steps() なので途中の補間が起きず、パラパラ漫画になる */
+@keyframes idle-frames {
+  from { background-position-x: var(--fx0); }
+  to { background-position-x: var(--fx1); }
+}
+
+.sprite.anim {
+  animation: idle-frames 0.8s steps(2, jump-none) infinite;
+}
+
+/* 自キャラはゆっくり呼吸する。コマ送りと重ねる（別プロパティなので両立する） */
 @keyframes breathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.07); }
@@ -344,6 +355,12 @@ button.wide.primary {
 
 .sprite.self {
   animation: breathe 2.6s ease-in-out infinite;
+}
+
+.sprite.anim.self {
+  animation:
+    idle-frames 0.8s steps(2, jump-none) infinite,
+    breathe 2.6s ease-in-out infinite;
 }
 
 /* 移動: 元いた方向から滑り込む */
@@ -412,6 +429,8 @@ button.wide.primary {
 
 /* 動きを減らす設定の人には出さない */
 @media (prefers-reduced-motion: reduce) {
+  .sprite.anim,
+  .sprite.anim.self,
   .sprite.self,
   .sprite.moved,
   .sprite.lunge,
