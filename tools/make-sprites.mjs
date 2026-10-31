@@ -17,12 +17,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TILE = 16;
-const COLS = 8;
+const COLS = 9;
 
-/** シート上の並び。2コマあるものは <名前> と <名前>_b が隣り合う */
+/**
+ * シート上の並び。2コマあるものは <名前> と <名前>_b が **隣り合う**こと。
+ * CSS は横位置を1枠ずらすだけでコマを切り替えるので、折り返しをまたぐと壊れる。
+ */
 const LAYOUT = [
-  'floor', 'wall', 'stairs', 'potion', 'bomb', 'sword', 'shield', 'scroll',
-  'hero', 'hero_b', 'goblin', 'goblin_b', 'bat', 'bat_b', 'slime', 'slime_b',
+  // 1行目: 1コマのもの
+  'floor', 'wall', 'stairs', 'potion', 'bomb', 'sword', 'shield', 'scroll', 'torch',
+  // 2行目: 2コマのもの（必ず対で置く）
+  'hero', 'hero_b', 'goblin', 'goblin_b', 'bat', 'bat_b', 'slime', 'slime_b', 'blank',
 ];
 
 const PALETTE = {
@@ -97,6 +102,20 @@ const ART = {
     '..KWWWWWWWWWWK..', '..KWKKKKKKKKWK..', '..KWWWWWWWWWWK..', '..KWKKKKKKKWWK..',
     '..KWWWWWWWWWWK..', '..KWKKKKKKKKWK..', '..KWWWWWWWWWWK..', '..KWKKKKKKWWWK..',
     '..KGWWWWWWWWGK..', '..KGGGGGGGGGGK..', '................', '................',
+  ],
+
+  torch: [
+    '................', '.......OO.......', '......OYYO......', '.....OYYYYO.....',
+    '.....OYWWYO.....', '.....OYYYYO.....', '......OYYO......', '.......OO.......',
+    '.......oo.......', '.......oo.......', '.......oo.......', '.......oo.......',
+    '.......oo.......', '.......oo.......', '.......oo.......', '................',
+  ],
+  // 枠を埋めるためだけの空。並びを崩さないために置いてある
+  blank: [
+    '................', '................', '................', '................',
+    '................', '................', '................', '................',
+    '................', '................', '................', '................',
+    '................', '................', '................', '................',
   ],
 
   // --- 生き物は2コマ。_b が2コマ目 ---

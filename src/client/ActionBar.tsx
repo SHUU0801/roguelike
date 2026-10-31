@@ -62,14 +62,16 @@ export function ActionBar({
           持ち物 {inventory.length > 0 ? `(${inventory.length})` : ''}
         </button>
         <button
+          className={playing && hasItemHere ? "ready" : ""}
           disabled={!playing || !hasItemHere}
-          onClick={() => onAction({ type: 'pickUp' })}
+          onClick={() => onAction({ type: "pickUp" })}
         >
           拾う
         </button>
         <button
+          className={playing && onStairs ? "ready" : ""}
           disabled={!playing || !onStairs}
-          onClick={() => onAction({ type: 'descend' })}
+          onClick={() => onAction({ type: "descend" })}
         >
           降りる
         </button>

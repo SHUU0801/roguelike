@@ -115,10 +115,16 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
       const dir = me ? dirTo(me.pos, { x, y }) : null;
       const movable = dir !== null && tile !== 'wall' && known;
 
-      // 自分と仲間は同じ見た目なので、枠の色で見分ける
+      // 枠の色で見分ける。黄=自分 / 青=仲間 / 赤=敵。
+      // 「赤いマスは叩ける」が色だけで伝わるので、説明文が要らない
       const occupant = visible ? actorAt(state, x, y) : undefined;
-      const mark =
-        occupant?.kind === 'player' ? (occupant.id === myId ? 'me' : 'ally') : '';
+      const mark = !occupant
+        ? ""
+        : occupant.kind === "monster"
+          ? "foe"
+          : occupant.id === myId
+            ? "me"
+            : "ally";
 
       // 乗っているもの（Actor > アイテム）。記憶だけのマスには出さない
       const item = visible && !occupant ? itemAt(state, x, y) : undefined;
@@ -134,9 +140,17 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
       cells.push(
         <div
           key={`${x},${y}`}
-          className={['cell', known ? tile : 'unseen', remembered ? 'dim' : '', movable ? 'movable' : '', mark]
+          className={[
+            "cell",
+            known ? tile : "unseen",
+            remembered ? "dim" : "",
+            movable ? "movable" : "",
+            // 何も乗っていない行き先には点を出す。「ここを押せば歩く」が1秒で分かる
+            movable && !topSprite ? "vacant" : "",
+            mark,
+          ]
             .filter(Boolean)
-            .join(' ')}
+            .join(" ")}
           style={sprites && known ? spriteStyle(TILE_SPRITE[tile]) : undefined}
           onClick={movable && dir ? () => onMove(dir) : undefined}
         >

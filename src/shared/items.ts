@@ -22,7 +22,8 @@ export const ITEMS = {
   bomb: { name: '爆弾', glyph: '💣', sprite: 'bomb', pvpSafe: true },
   sword: { name: '剣', glyph: '🗡️', sprite: 'sword', pvpSafe: true },
   shield: { name: '盾', glyph: '🛡️', sprite: 'shield', pvpSafe: true },
-  scroll: { name: '転移の巻物', glyph: '📜', sprite: 'scroll', pvpSafe: false },
+  scroll: { name: '転移の巻物', glyph: '📜', sprite: 'scroll', pvpSafe: true },
+  torch: { name: '松明', glyph: '🔥', sprite: 'torch', pvpSafe: true },
 } as const satisfies Record<string, ItemDef>;
 
 export type ItemId = keyof typeof ITEMS;

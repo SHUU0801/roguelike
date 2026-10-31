@@ -33,11 +33,23 @@ export function calcDamage(
  * HP を削る。倒れたら alive を落とすところまで。
  * 死体の片付けと勝敗判定は resolve.ts がまとめて行う。
  */
-export function damage(state: GameState, defender: Actor, amount: number): void {
+export function damage(
+  state: GameState,
+  defender: Actor,
+  amount: number,
+  attacker?: Actor,
+): void {
   defender.hp = Math.max(0, defender.hp - amount);
 
   const name = speciesOf(defender.speciesId).name;
-  pushLog(state, `${name}に${amount}ダメージ`);
+  // 攻撃1回で2行出すと、表示枠から自分の与ダメージが押し出されて消える。
+  // 1行にまとめる
+  pushLog(
+    state,
+    attacker
+      ? `${speciesOf(attacker.speciesId).name} → ${name} ${amount}ダメージ`
+      : `${name}に${amount}ダメージ`,
+  );
 
   if (defender.hp === 0) {
     defender.alive = false;
@@ -52,6 +64,5 @@ export function attack(
   defender: Actor,
   opts: { pvp: boolean } = { pvp: false },
 ): void {
-  pushLog(state, `${speciesOf(attacker.speciesId).name}の攻撃`);
-  damage(state, defender, calcDamage(attacker, defender, opts));
+  damage(state, defender, calcDamage(attacker, defender, opts), attacker);
 }

@@ -1,6 +1,7 @@
 import { ITEMS, type ItemId } from '../shared/items';
 import { SPECIES, speciesOf, type SpeciesId } from '../shared/monsters';
 import {
+  FUEL_START,
   MAX_DEPTH,
   actorAt,
   tileAt,
@@ -13,7 +14,18 @@ import { pick, randInt } from './random';
 
 /** フロアに出すモンスターの種類。深さに関係なく同じ顔ぶれ（v0 の範囲） */
 const MONSTER_POOL: SpeciesId[] = ['goblin', 'bat', 'slime'];
-const ITEM_POOL: ItemId[] = Object.keys(ITEMS) as ItemId[];
+/**
+ * アイテムの出現。配列に重複して入れることで重み付けにしている。
+ * 均等だと剣と盾が出すぎて、そのほとんどが無価値になる。
+ */
+const ITEM_POOL: ItemId[] = [
+  "potion", "potion", "potion", "potion",
+  "torch", "torch", "torch",
+  "bomb", "bomb",
+  "sword", "sword",
+  "shield", "shield",
+  "scroll",
+];
 
 /** 持ち物の上限。スマホの画面に並ぶ数で決めている */
 export const MAX_INVENTORY = 6;
@@ -42,6 +54,58 @@ export function createInitialGame(): GameState {
   return state;
 }
 
+/**
+ * 1F の出現部屋にだけ、薬草1個とコウモリ1体を置く。
+ *
+ * 通常の配置は出現部屋を除外しているので、初見プレイヤーは
+ * 「何もない暗い部屋から、真っ黒な通路を十数手歩く」ところから始まっていた。
+ * どんなチュートリアル画面よりこれが効く。
+ * 歩く → 拾う → 殴る が最初の30秒で全部起きる。
+ */
+function seedFirstRoom(state: GameState): void {
+  const room = state.floor.rooms[0];
+  if (!room) return;
+
+  const spawn = spawnPos(state.floor);
+  const free: Pos[] = [];
+  for (let y = room.y; y < room.y + room.h; y++) {
+    for (let x = room.x; x < room.x + room.w; x++) {
+      if (tileAt(state.floor, x, y) !== "floor") continue;
+      const d = Math.abs(x - spawn.x) + Math.abs(y - spawn.y);
+      if (d < 2) continue; // 真隣には置かない
+      free.push({ x, y });
+    }
+  }
+  if (free.length === 0) return;
+
+  // 近いところに薬草。歩いているうちに勝手に拾える
+  free.sort(
+    (a, b) =>
+      Math.abs(a.x - spawn.x) + Math.abs(a.y - spawn.y) -
+      (Math.abs(b.x - spawn.x) + Math.abs(b.y - spawn.y)),
+  );
+  state.items.push({ id: newId("i"), itemId: "potion", pos: free[0], ownerId: null });
+
+  // 一番遠いところに一番弱い敵。倒せる成功体験を最初に置く
+  const far = free[free.length - 1];
+  if (free.length > 1) {
+    const species = SPECIES.bat;
+    state.actors.push({
+      id: newId("m"),
+      kind: "monster",
+      team: "M",
+      speciesId: "bat",
+      pos: far,
+      hp: species.maxHp,
+      maxHp: species.maxHp,
+      atk: species.atk,
+      def: species.def,
+      alive: true,
+      fuel: 0,
+    });
+  }
+}
+
 /** ロビーから探索を始める */
 export function startGame(state: GameState): void {
   if (state.phase !== 'lobby') return;
@@ -66,6 +130,7 @@ export function addPlayer(state: GameState, id: string): void {
     atk: species.atk,
     def: species.def,
     alive: true,
+    fuel: FUEL_START,
   });
   pushLog(state, `${species.name}が1人加わった`);
 }
@@ -147,6 +212,7 @@ function populateFloor(state: GameState): void {
         atk: species.atk,
         def: species.def,
         alive: true,
+        fuel: 0, // モンスターは松明を持たない
       });
     } else {
       const itemId = pick(ITEM_POOL) ?? 'potion';
@@ -159,6 +225,8 @@ function populateFloor(state: GameState): void {
       state.items.push(item);
     }
   }
+
+  if (floor.depth === 1) seedFirstRoom(state);
 }
 
 /** 誰かの持ち物 */

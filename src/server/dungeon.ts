@@ -75,6 +75,13 @@ export function createFloor(depth: number): Floor {
   return floor;
 }
 
+/** 階段のマス。無ければ undefined */
+export function stairsPos(floor: Floor): Pos | undefined {
+  const i = floor.tiles.indexOf("stairs");
+  if (i < 0) return undefined;
+  return { x: i % floor.width, y: Math.floor(i / floor.width) };
+}
+
 /** プレイヤーの出現位置。最初の部屋の中心 */
 export function spawnPos(floor: Floor): Pos {
   const room = floor.rooms[0];

@@ -6,7 +6,14 @@ import { PartyBar } from './PartyBar';
 import { useGame } from './useGame';
 import { useTurnEffects } from './useTurnEffects';
 import { isMuted, setMuted, sfx } from './sfx';
-import { itemAt, tileAt, type Dir, type Intent } from '../shared/types';
+import {
+  FUEL_DANGER,
+  FUEL_WARN,
+  itemAt,
+  tileAt,
+  type Dir,
+  type Intent,
+} from '../shared/types';
 
 /** 締め切りまでの残り秒。待っていないときは null */
 function useSecondsLeft(deadlineAt: number | null): number | null {
@@ -141,7 +148,20 @@ export function App() {
             </span>
           )}
         </span>
-        <span className="turn">{state.turn} ターン</span>
+        {/* 松明の残り。これが時間のコストそのものなので、常に見えている必要がある */}
+        {me && (
+          <span
+            className={[
+              'fuel',
+              me.fuel === 0 ? 'out' : me.fuel <= FUEL_DANGER ? 'danger' : me.fuel <= FUEL_WARN ? 'low' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            🔥 {me.fuel}
+          </span>
+        )}
+        <span className="turn">{state.turn}</span>
         <button
           className="mute"
           aria-label={muted ? '音を出す' : '音を消す'}
@@ -157,9 +177,19 @@ export function App() {
 
       <PartyBar state={state} myId={myId} />
 
-      {state.phase === 'won' && <div className="banner win">踏破した！</div>}
+      {state.phase === 'won' && (
+        <div className="banner win">
+          <span>踏破した！ {state.turn} ターン</span>
+          <button onClick={() => location.reload()}>もう一度</button>
+        </div>
+      )}
       {state.phase === 'lost' && (
-        <div className="banner lose">全滅した… リロードでもう一度</div>
+        <div className="banner lose">
+          <span>
+            {state.floor.depth}F で全滅… {state.turn} ターン
+          </span>
+          <button onClick={() => location.reload()}>もう一度</button>
+        </div>
       )}
       {state.phase === 'playing' && me && !me.alive && (
         <div className="banner lose">力尽きた。仲間の戦いを見守る</div>
@@ -181,9 +211,14 @@ export function App() {
       {/* 殴られた合図。key にターンを入れて、連続で殴られても毎回光らせる */}
       {turnEffects.selfHurt && <div key={state.turn} className="hurt-flash" />}
 
+      {/*
+        key に配列の添字ではなく通し番号を使う。
+        添字だと新しい行が来ても同じ DOM 要素が使い回され、
+        最新行を光らせるアニメーションが一度も発火しない。
+      */}
       <div className="log">
-        {state.log.slice(-2).map((line, i) => (
-          <div key={i}>{line}</div>
+        {state.log.slice(-3).map((line, i) => (
+          <div key={state.log.length - 3 + i}>{line}</div>
         ))}
       </div>
 

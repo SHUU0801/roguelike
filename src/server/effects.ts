@@ -1,7 +1,15 @@
 import { itemDefOf } from '../shared/items';
-import { isHostile, type Actor, type GameState, type ItemInstance } from '../shared/types';
+import {
+  FUEL_REFILL,
+  isHostile,
+  tileAt,
+  type Actor,
+  type GameState,
+  type ItemInstance,
+  type Pos,
+} from '../shared/types';
 import { damage } from './combat';
-import { randomFloorPos } from './dungeon';
+import { randomFloorPos, stairsPos } from './dungeon';
 import { pushLog } from './game';
 
 const BOMB_DAMAGE = 10;
@@ -72,15 +80,25 @@ export function applyItem(state: GameState, actor: Actor, item: ItemInstance): v
       break;
     }
 
+    case 'torch': {
+      actor.fuel += FUEL_REFILL;
+      pushLog(state, `松明をつぎ足した（残り ${actor.fuel}）`);
+      break;
+    }
+
     case 'scroll': {
-      // pvpSafe: false のアイテム。v1.5 の対戦では効果を確定化するか、外す
-      const to = randomFloorPos(state.floor, [actor.pos]);
+      // 「階段の隣へ飛ぶ」に変えた。
+      // 以前はランダムな床（しかも部屋の中だけ）に飛ぶので、
+      // 敵の群れの真ん中に落ちることがあり、ほぼ純粋な損失アイテムだった。
+      // 行き先が決まっているので効果が確定し、対戦でも使える（pvpSafe: true）。
+      // 松明が尽きかけたときの「切り上げる」手段になる。
+      const to = besideStairs(state) ?? randomFloorPos(state.floor, [actor.pos]);
       if (!to) {
         pushLog(state, '何も起きなかった');
         break;
       }
       actor.pos = to;
-      pushLog(state, 'どこかへ飛ばされた');
+      pushLog(state, '階段のそばへ飛ばされた');
       break;
     }
 
@@ -91,4 +109,19 @@ export function applyItem(state: GameState, actor: Actor, item: ItemInstance): v
 
   // 使ったら消える
   state.items = state.items.filter((i) => i.id !== item.id);
+}
+
+/** 階段の隣の空きマス。階段そのものには乗せない（降りるかどうかは本人に選ばせる） */
+function besideStairs(state: GameState): Pos | undefined {
+  const stairs = stairsPos(state.floor);
+  if (!stairs) return undefined;
+
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const x = stairs.x + dx;
+    const y = stairs.y + dy;
+    if (tileAt(state.floor, x, y) === 'wall') continue;
+    if (state.actors.some((a) => a.alive && a.pos.x === x && a.pos.y === y)) continue;
+    return { x, y };
+  }
+  return stairs;
 }

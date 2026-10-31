@@ -15,7 +15,7 @@
 export const SHEET = {
   url: '/sprites/tiles.png',
   tile: 16,
-  cols: 8,
+  cols: 9,
   rows: 2,
 } as const;
 
@@ -28,6 +28,7 @@ export type SpriteId =
   | 'sword'
   | 'shield'
   | 'scroll'
+  | 'torch'
   | 'hero'
   | 'goblin'
   | 'bat'
@@ -46,11 +47,12 @@ export const SPRITE_INDEX: Record<SpriteId, number> = {
   sword: 5,
   shield: 6,
   scroll: 7,
+  torch: 8,
   // 以下は2コマ。次の枠（index + 1）が2コマ目
-  hero: 8,
-  goblin: 10,
-  bat: 12,
-  slime: 14,
+  hero: 9,
+  goblin: 11,
+  bat: 13,
+  slime: 15,
 };
 
 /** 2コマのアニメーションを持つもの。2コマ目は index + 1 */

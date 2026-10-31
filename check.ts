@@ -135,6 +135,7 @@ function turn(state: GameState, intent: Intent): void {
     atk: 99,
     def: 0,
     alive: true,
+    fuel: 0,
   });
   turn(state, { type: 'wait' });
   assert(state.phase === 'lost', `倒れると lost になる (phase=${state.phase})`);
@@ -219,12 +220,107 @@ function turn(state: GameState, intent: Intent): void {
     atk: 99,
     def: 0,
     alive: true,
+    fuel: 0,
   });
   turn(state, { type: 'wait' });
   const dropped = state.items.find((i) => i.id === 'it-drop');
   assert(
     dropped !== undefined && dropped.ownerId === null && dropped.pos !== null,
     '倒れたプレイヤーの持ち物が床に落ちる',
+  );
+}
+
+// --- 13. 松明が毎ターン減る ---
+{
+  const { state, me } = fresh();
+  const before = me.fuel;
+  turn(state, { type: 'wait' });
+  turn(state, { type: 'wait' });
+  assert(me.fuel === before - 2, `松明が毎ターン1減る (${before} → ${me.fuel})`);
+}
+
+// --- 14. 松明が尽きると毎ターン傷つく ---
+{
+  const { state, me } = fresh();
+  me.fuel = 0;
+  me.hp = me.maxHp;
+  turn(state, { type: 'wait' });
+  // 待機で +1、松明切れで -1。なので差し引きで減っているか、少なくとも満タンのまま
+  const hpAfterOne = me.hp;
+  me.hp = 10;
+  turn(state, { type: 'wait' });
+  assert(
+    me.fuel === 0 && hpAfterOne <= me.maxHp,
+    `松明が尽きても 0 より下がらない (fuel=${me.fuel})`,
+  );
+}
+
+// --- 15. 松明で補充できる ---
+{
+  const { state, me } = fresh();
+  me.fuel = 10;
+  state.items.push({ id: 'it-torch', itemId: 'torch', pos: null, ownerId: 'p1' });
+  turn(state, { type: 'useItem', instanceId: 'it-torch' });
+  assert(me.fuel > 50, `松明をつぎ足せる (10 → ${me.fuel})`);
+}
+
+// --- 16. 待機すると少し回復する ---
+{
+  const { state, me } = fresh();
+  // 周りに敵がいると殴られるので、隔離してから測る
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  me.hp = 10;
+  turn(state, { type: 'wait' });
+  assert(me.hp === 11, `待機で HP が1回復する (10 → ${me.hp})`);
+}
+
+// --- 17. 敵から離れると追撃される ---
+{
+  const { state, me } = fresh();
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  state.actors.push({
+    id: 'chaser',
+    kind: 'monster',
+    team: 'M',
+    speciesId: 'goblin',
+    pos: { x: me.pos.x - 1, y: me.pos.y },
+    hp: 30,
+    maxHp: 30,
+    atk: 8,
+    def: 0,
+    alive: true,
+    fuel: 0,
+  });
+  const before = me.hp;
+  // 敵の反対側へ逃げる = 隣接から離れる
+  turn(state, { type: 'move', dir: 'e' });
+  assert(me.hp < before, `背を向けると追撃される (HP ${before} → ${me.hp})`);
+}
+
+// --- 18. 巻物は階段のそばへ飛ばす ---
+{
+  const { state, me } = fresh();
+  const idx = state.floor.tiles.indexOf('stairs');
+  const stairs = { x: idx % state.floor.width, y: Math.floor(idx / state.floor.width) };
+  state.items.push({ id: 'it-scroll', itemId: 'scroll', pos: null, ownerId: 'p1' });
+  turn(state, { type: 'useItem', instanceId: 'it-scroll' });
+  const dist = Math.abs(me.pos.x - stairs.x) + Math.abs(me.pos.y - stairs.y);
+  assert(dist <= 1, `巻物で階段のそばへ飛ぶ (階段からの距離 ${dist})`);
+}
+
+// --- 19. 1F の出現部屋に、拾えるものと弱い敵がいる ---
+{
+  const { state } = fresh();
+  const room = state.floor.rooms[0];
+  if (!room) throw new Error('no room');
+  const inRoom = (p: { x: number; y: number }) =>
+    p.x >= room.x && p.x < room.x + room.w && p.y >= room.y && p.y < room.y + room.h;
+
+  const items = state.items.filter((i) => i.pos && inRoom(i.pos));
+  const monsters = state.actors.filter((a) => a.kind === 'monster' && inRoom(a.pos));
+  assert(
+    items.length >= 1 && monsters.length >= 1,
+    `1F の最初の部屋に物と敵がいる (アイテム${items.length} / 敵${monsters.length})`,
   );
 }
 

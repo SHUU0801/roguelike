@@ -29,6 +29,22 @@ export const DIR_DELTA: Record<Dir, Pos> = {
 /** v0 のダンジョンの深さ。ここまで降りればクリア */
 export const MAX_DEPTH = 5;
 
+/**
+ * 松明の残り。毎ターン1ずつ減り、0 になると毎ターン傷つく。
+ *
+ * これが「時間を資源にする」仕掛け（03_改善構成.md 段階B）。
+ * これが無いと、通路に1歩下がれば無料で安全・時間を使っても何も減らないので、
+ * プレイヤーは一番安全で退屈な手を選び続けることになる。
+ *
+ * **数値は遊んで決めるもの。** 1ランは150〜220ターン前後の見込みなので、
+ * 全部の部屋を漁ると足りなくなるくらいを狙っている。
+ */
+export const FUEL_START = 260;
+export const FUEL_REFILL = 90;
+/** これを下回ったら警告を出す */
+export const FUEL_WARN = 50;
+export const FUEL_DANGER = 20;
+
 /** 1部屋に入れる人数 */
 export const MAX_PLAYERS = 4;
 
@@ -60,6 +76,8 @@ export type Actor = {
   atk: number;
   def: number;
   alive: boolean;
+  /** 松明の残り。プレイヤーだけが持つ（モンスターは 0 のまま使わない） */
+  fuel: number;
 };
 
 export type ItemInstance = {

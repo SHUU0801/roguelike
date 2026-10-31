@@ -10,8 +10,9 @@ import {
   type Intent,
   type Pos,
 } from '../shared/types';
+import { FUEL_DANGER, FUEL_WARN } from '../shared/types';
 import { monsterAct } from './ai';
-import { attack } from './combat';
+import { attack, damage } from './combat';
 import { applyItem } from './effects';
 import { MAX_INVENTORY, descend, inventoryOf, pushLog } from './game';
 import { updateVision } from './vision';
@@ -50,14 +51,46 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
     }
   }
 
-  // c. 死亡の片付けと勝敗判定
+  // c. 松明が燃える。時間そのものを資源にするのがこの1行の目的
+  burnFuel(state);
+
+  // d. 死亡の片付けと勝敗判定
   cleanUpDead(state);
   checkGameOver(state);
 
-  // d. 視界の更新
+  // e. 視界の更新
   updateVision(state);
 
   state.turn += 1;
+}
+
+/**
+ * 松明を燃やす。
+ *
+ * これが入るまで、このゲームには時間のコストが存在しなかった。
+ * 通路に1歩下がれば追跡は切れ、時間を使っても何も減らないので、
+ * どの判断も「やらなくていい」で解決できてしまっていた。
+ * 1ターン1だけ減らすこの処理で、既存の全ターンに意味が生まれる。
+ */
+function burnFuel(state: GameState): void {
+  for (const actor of state.actors) {
+    if (actor.kind !== 'player' || !actor.alive) continue;
+
+    if (actor.fuel > 0) {
+      actor.fuel -= 1;
+      if (actor.fuel === FUEL_WARN) pushLog(state, '松明が心細くなってきた');
+      else if (actor.fuel === FUEL_DANGER) pushLog(state, '松明が消えかけている');
+      else if (actor.fuel === 0) pushLog(state, '松明が消えた…');
+      continue;
+    }
+
+    // 消えている間は毎ターン傷つく。立ち止まっていても安全ではなくなる
+    damage(state, actor, 1);
+  }
+}
+
+function manhattan(a: Pos, b: Pos): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): void {
@@ -66,6 +99,12 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
 
   switch (intent.type) {
     case 'wait':
+      // 待機に意味を持たせる。松明を燃やして体力に換える取引になる。
+      // 以前は押しても何も起きないボタンだった
+      if (actor.hp < actor.maxHp) {
+        actor.hp += 1;
+        pushLog(state, '息を整えた');
+      }
       return;
 
     case 'move': {
@@ -89,7 +128,26 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
         return;
       }
 
+      // 離脱ペナルティ。
+      // 隣にいる敵から離れると、その敵が1回だけ無条件で殴る。
+      // これが無いと「3発殴って不利だと分かったら無料で撤退」ができてしまい、
+      // 戦闘を始めること自体が無リスクになる。退却に値段を付ける。
+      const leaving = state.actors.filter(
+        (a) =>
+          a.alive &&
+          isHostile(actor, a) &&
+          manhattan(a.pos, actor.pos) === 1 &&
+          manhattan(a.pos, { x: nx, y: ny }) > 1,
+      );
+
       actor.pos = { x: nx, y: ny };
+
+      for (const enemy of leaving) {
+        if (!actor.alive) return;
+        pushLog(state, '背を向けた隙を突かれた');
+        attack(state, enemy, actor, { pvp: false });
+      }
+      if (!actor.alive) return;
 
       // 乗ったら拾う。
       // 拾うためだけに1ターン使うのは、判断ではなく税だった。
