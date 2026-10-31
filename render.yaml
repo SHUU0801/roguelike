@@ -1,0 +1,17 @@
+# Render の設定。リポジトリを指定すれば、ここを読んで自動で設定される。
+# 画面入力でひとつずつ設定する必要がなくなる。
+# 手順は 05_公開手順.md
+
+services:
+  - type: web
+    name: roguelike
+    runtime: node
+    plan: free
+    # 画面をビルドしてから起動する。dist/ が無いとサーバーは WebSocket だけになる
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+    # 無料枠は使われないと休止する。起こすのに30秒ほどかかる
+    healthCheckPath: /
