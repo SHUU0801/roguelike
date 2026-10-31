@@ -1,0 +1,176 @@
+import { useEffect, useState } from 'react';
+import { Client, type Room } from '@colyseus/sdk';
+import type { GameState, Intent } from '../shared/types';
+
+/**
+ * クライアントは `@colyseus/sdk` を使う（`colyseus.js` ではない）。
+ *
+ * `colyseus.js` は 0.16 系で止まっており、サーバー 0.18 のマッチメイキング応答
+ * （roomId などが平坦に並んだ形）を読めずに接続が失敗する。
+ * サーバー 0.18 に対応したクライアントはこちら。
+ */
+
+/**
+ * サーバーの場所。
+ * localhost 固定にせず、開いている URL のホスト名を使う。
+ * こうしておくとスマホの実機から LAN 経由で開いたときもそのまま繋がる。
+ */
+const SERVER_URL = `ws://${window.location.hostname}:2567`;
+
+/** URL に ?room=xxxx が付いていれば、その部屋に合流する */
+function wantedRoomId(): string | null {
+  return new URLSearchParams(window.location.search).get('room');
+}
+
+/**
+ * 再接続用の合い言葉。
+ *
+ * スマホはアプリを切り替えただけで WebSocket が切れる。
+ * サーバーは 30 秒だけ席を取っておくので、その間に同じ合い言葉で戻れば
+ * 同じキャラのまま復帰できる。
+ *
+ * どの部屋の合い言葉かを一緒に覚えておくのが要点。
+ * これが無いと、別の部屋の URL を開いたのに前の部屋へ戻されてしまう。
+ */
+const TOKEN_KEY = 'roguelike:reconnect';
+
+type SavedToken = { roomId: string; token: string };
+
+function saveToken(saved: SavedToken): void {
+  try {
+    sessionStorage.setItem(TOKEN_KEY, JSON.stringify(saved));
+  } catch {
+    // プライベートモードなどで使えないことがある。使えなくても遊べる
+  }
+}
+
+function loadToken(): SavedToken | null {
+  try {
+    const raw = sessionStorage.getItem(TOKEN_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as SavedToken).roomId === 'string' &&
+      typeof (parsed as SavedToken).token === 'string'
+    ) {
+      return parsed as SavedToken;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function clearToken(): void {
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // 消せなくても困らない
+  }
+}
+
+export type Connection =
+  | { status: 'connecting' }
+  | { status: 'error'; message: string }
+  | { status: 'closed' }
+  | {
+      status: 'open';
+      state: GameState;
+      myId: string;
+      roomId: string;
+      inviteUrl: string;
+      send: (intent: Intent) => void;
+      start: () => void;
+    };
+
+export function useGame(): Connection {
+  const [room, setRoom] = useState<Room | null>(null);
+  const [state, setState] = useState<GameState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [closed, setClosed] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let joined: Room | null = null;
+
+    const client = new Client(SERVER_URL);
+    const wanted = wantedRoomId();
+
+    // ?room= があれば合流、無ければ新しい部屋を作る。
+    // joinOrCreate を使わないのは、知らない人の部屋に勝手に入れないようにするため。
+    const joinFresh = () => (wanted ? client.joinById(wanted) : client.create('game'));
+
+    // 戻ろうとしている部屋の合い言葉を持っているときだけ再接続を試す
+    const saved = loadToken();
+    const canReconnect = saved !== null && (wanted === null || wanted === saved.roomId);
+
+    const joining =
+      saved && canReconnect
+        ? client.reconnect(saved.token).catch(() => joinFresh())
+        : joinFresh();
+
+    joining
+      .then((r) => {
+        joined = r;
+        if (disposed) {
+          void r.leave();
+          return;
+        }
+        r.onMessage('state', (payload) => setState(payload as GameState));
+        r.onError((code, message) => setError(`通信エラー (${code}) ${message ?? ''}`));
+        // 部屋が消えたら、古い状態を描き続けずに接続が切れたことを表に出す。
+        // 開発中はサーバーを保存のたびに再起動するので、これが無いと
+        // 「中身の違う古い状態」を描画しようとして画面が落ちる。
+        r.onLeave(() => setClosed(true));
+        saveToken({ roomId: r.roomId, token: r.reconnectionToken });
+        setRoom(r);
+      })
+      .catch((e: unknown) => {
+        if (disposed) return;
+        const detail = e instanceof Error ? e.message : '';
+        setError(
+          wanted ? `その部屋に入れない: ${detail}` : `サーバーに繋がらない: ${detail}`,
+        );
+      });
+
+    return () => {
+      disposed = true;
+      void joined?.leave();
+    };
+  }, []);
+
+  // 決着がついた部屋には戻らない。「リロードでもう一度」が効かなくなるため
+  useEffect(() => {
+    if (state?.phase === 'won' || state?.phase === 'lost') clearToken();
+  }, [state?.phase]);
+
+  // 開発中のデバッグ用。ブラウザのコンソールで __game.state と打つと今の盤面が見える。
+  // 本番ビルドでは import.meta.env.DEV が false になるので消える。
+  if (import.meta.env.DEV && room && state) {
+    (window as unknown as Record<string, unknown>).__game = {
+      state,
+      myId: room.sessionId,
+      roomId: room.roomId,
+      send: (intent: Intent) => room.send('intent', intent),
+      start: () => room.send('start'),
+    };
+  }
+
+  if (error) return { status: 'error', message: error };
+  if (closed) return { status: 'closed' };
+  if (!room || !state) return { status: 'connecting' };
+
+  const base = `${window.location.origin}${window.location.pathname}`;
+
+  return {
+    status: 'open',
+    state,
+    myId: room.sessionId,
+    roomId: room.roomId,
+    inviteUrl: `${base}?room=${room.roomId}`,
+    send: (intent) => room.send('intent', intent),
+    start: () => room.send('start'),
+  };
+}
