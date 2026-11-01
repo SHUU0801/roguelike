@@ -13,6 +13,7 @@
  *   - 空振りしたら待ち時間を使わない（罰ではなく判断にする）
  */
 
+import type { IconId } from './icons';
 import type { JobId } from './jobs';
 
 export type SkillId =
@@ -36,7 +37,7 @@ export type SkillId =
 export type SkillDef = {
   name: string;
   desc: string;
-  glyph: string;
+  icon: IconId;
   job: JobId;
   /** 使ったあと何ターン使えないか */
   cooldown: number;
@@ -47,21 +48,21 @@ export const SKILLS = {
   cleave: {
     name: 'ぶんまわし',
     desc: '隣にいる敵すべてを一度に殴る',
-    glyph: '🪓',
+    icon: 'axe',
     job: 'warrior',
     cooldown: 4,
   },
   taunt: {
     name: '挑発',
     desc: '周りの敵全部をこちらに向かせ、3ターン自分の防御 +3',
-    glyph: '📢',
+    icon: 'horn',
     job: 'warrior',
     cooldown: 6,
   },
   bulwark: {
     name: '盾の構え',
     desc: '4ターン、受けるダメージを半分にする',
-    glyph: '🛡️',
+    icon: 'shield2',
     job: 'warrior',
     cooldown: 7,
   },
@@ -70,21 +71,21 @@ export const SKILLS = {
   backstab: {
     name: 'きゅうしょづき',
     desc: '隣の敵1体に、防御を無視した攻撃力ぶんのダメージ',
-    glyph: '🗡️',
+    icon: 'dagger',
     job: 'rogue',
     cooldown: 4,
   },
   vanish: {
     name: 'かげがくれ',
     desc: '4ターン、敵に見つからなくなる（追ってきた敵も見失う）',
-    glyph: '🌫️',
+    icon: 'smoke',
     job: 'rogue',
     cooldown: 8,
   },
   venom: {
     name: 'どくばり',
     desc: '隣の敵1体を毒にする。5ターンのあいだ毎ターン 3 ダメージ',
-    glyph: '🧪',
+    icon: 'flask',
     job: 'rogue',
     cooldown: 5,
   },
@@ -93,21 +94,21 @@ export const SKILLS = {
   fireball: {
     name: 'かえんだん',
     desc: '同じ列か行にいる、壁に遮られていない一番近い敵を撃つ',
-    glyph: '🔥',
+    icon: 'flame',
     job: 'mage',
     cooldown: 5,
   },
   bolt: {
     name: 'いなずま',
     desc: '一直線に貫く。その線上の敵すべてに当たる',
-    glyph: '⚡',
+    icon: 'bolt',
     job: 'mage',
     cooldown: 6,
   },
   frost: {
     name: 'こおりのやり',
     desc: '一番近い敵を3ターン凍らせる（動けない）',
-    glyph: '❄️',
+    icon: 'ice',
     job: 'mage',
     cooldown: 6,
   },
@@ -116,21 +117,21 @@ export const SKILLS = {
   heal: {
     name: 'いやしのひかり',
     desc: '自分と、隣にいる仲間の体力を回復する',
-    glyph: '✨',
+    icon: 'sparkle',
     job: 'cleric',
     cooldown: 5,
   },
   bless: {
     name: 'まもりのうた',
     desc: '自分と隣の仲間の防御を 4ターン +2',
-    glyph: '🎵',
+    icon: 'note',
     job: 'cleric',
     cooldown: 6,
   },
   smite: {
     name: 'さばき',
     desc: '隣の敵1体に固定ダメージ。当たった敵は1ターン動けない',
-    glyph: '🔨',
+    icon: 'hammer',
     job: 'cleric',
     cooldown: 5,
   },

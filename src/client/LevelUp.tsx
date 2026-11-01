@@ -1,4 +1,5 @@
 import { perkOf, type PerkId } from '../shared/perks';
+import { Icon } from './Icon';
 import type { Actor } from '../shared/types';
 
 type Props = {
@@ -39,7 +40,7 @@ export function LevelUp({ me, onTake, onLater }: Props) {
             const have = me.perks.filter((p) => p === id).length;
             return (
               <button key={id} className="card" onClick={() => onTake(id)}>
-                <span className="card-glyph">{perk.glyph}</span>
+                <Icon id={perk.icon} size={32} />
                 <span className="card-name">
                   {perk.name}
                   {have > 0 && <span className="card-have">所持 {have}</span>}

@@ -1,4 +1,5 @@
 import { jobOf } from '../shared/jobs';
+import { Icon } from './Icon';
 import type { GameState } from '../shared/types';
 
 type Props = {
@@ -33,7 +34,7 @@ export function PartyBar({ state, myId }: Props) {
         >
           <b>{p.slot}</b>
           {/* 誰が何の職業かは、物を渡す相手を決めるのに要る */}
-          <span className="chip-job">{jobOf(p.job).glyph}</span>
+          <Icon id={jobOf(p.job).icon} size={16} />
           {p.alive ? `${p.hp}/${p.maxHp}` : '倒れた'}
           <span className="chip-lv">Lv{p.level}</span>
         </span>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { speciesOf } from '../shared/monsters';
+import { SKILL_IDS, type SkillId } from '../shared/skills';
 import type { SpriteId } from '../shared/sprites';
 import type { Actor, GameState, Pos } from '../shared/types';
 
@@ -31,8 +32,15 @@ export type TurnEffects = {
   /** Actor id → その Actor に付ける動き */
   effects: Map<string, Effect>;
   ghosts: Ghost[];
-  /** このターンに「こちらに気づいた」敵。❗ を出すのに使う */
+  /** このターンに「こちらに気づいた」敵。印を出すのに使う */
   noticed: Set<string>;
+  /**
+   * このターンに誰かが使ったわざ → 効果が出たマスの Actor id。
+   *
+   * サーバーに「今わざを撃った」という状態は持たせない（04_絵とアニメの方針.md）。
+   * 待ち時間（cooldowns）が伸びたことから、誰が何を撃ったかを逆算する。
+   */
+  skillHits: { skill: SkillId; ids: string[] } | null;
   /** 自分が殴られたか。画面全体を赤く光らせるのに使う */
   selfHurt: boolean;
   /** 誰かが殴られたか（効果音に使う） */
@@ -55,6 +63,7 @@ const EMPTY: TurnEffects = {
   effects: new Map(),
   ghosts: [],
   noticed: new Set(),
+  skillHits: null,
   selfHurt: false,
   anyHit: false,
   selfAttacked: false,
@@ -141,6 +150,33 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
       }
     }
 
+    /*
+     * わざの見た目。
+     *
+     * 誰かの cooldowns が伸びていたら、その人がそのわざを使ったということ。
+     * 効果が出た相手は「このターンに体力が変わった Actor」で拾う
+     * （削れた敵も、回復した仲間も、どちらも光らせたい）。
+     */
+    let skillHits: TurnEffects['skillHits'] = null;
+    for (const now of state.actors) {
+      const was = before.get(now.id);
+      if (!was || now.kind !== 'player') continue;
+      const used = SKILL_IDS.find(
+        (id) => (now.cooldowns[id] ?? 0) > (was.cooldowns[id] ?? 0),
+      );
+      if (!used) continue;
+
+      const ids = state.actors
+        .filter((a) => {
+          const w = before.get(a.id);
+          return w !== undefined && w.hp !== a.hp;
+        })
+        .map((a) => a.id);
+      // 誰にも当たらないわざ（かげがくれ・盾の構え）は本人を光らせる
+      skillHits = { skill: used, ids: ids.length > 0 ? ids : [now.id] };
+      break;
+    }
+
     const myItemsBefore = prev.items.filter((i) => i.ownerId === myId).length;
     const myItemsNow = state.items.filter((i) => i.ownerId === myId).length;
 
@@ -154,6 +190,7 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
       effects,
       ghosts,
       noticed,
+      skillHits,
       selfHurt,
       anyHit: damaged.length > 0,
       selfAttacked: effects.get(myId ?? "")?.kind === "lunge",

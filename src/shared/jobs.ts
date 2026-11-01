@@ -11,7 +11,9 @@
  * レベルで def が伸びないのが重要（詳細は types.ts の LEVEL_GROWTH）。
  */
 
+import type { IconId } from './icons';
 import type { ItemId } from './items';
+import type { SpriteId } from './sprites';
 
 export type JobId = 'warrior' | 'rogue' | 'mage' | 'cleric';
 
@@ -19,7 +21,10 @@ export type JobDef = {
   name: string;
   /** 選択画面に出す1行。選ぶ前に違いが分かる必要がある */
   tagline: string;
-  glyph: string;
+  /** 一覧やボタンに出すアイコン。絵文字は使わない（shared/icons.ts） */
+  icon: IconId;
+  /** 盤上の姿。職業ごとに違う絵にしないと、番号でしか見分けられない */
+  sprite: SpriteId;
   maxHp: number;
   atk: number;
   def: number;
@@ -53,7 +58,8 @@ export const JOBS = {
   warrior: {
     name: '戦士',
     tagline: '固い。前に立って受ける',
-    glyph: '🛡️',
+    icon: 'helmet',
+    sprite: 'warrior',
     maxHp: 30,
     atk: 6,
     def: 3,
@@ -70,7 +76,8 @@ export const JOBS = {
   rogue: {
     name: '盗賊',
     tagline: '柔らかいが一番殴れる',
-    glyph: '🗡️',
+    icon: 'dagger',
+    sprite: 'rogue',
     maxHp: 22,
     atk: 8,
     def: 1,
@@ -87,7 +94,8 @@ export const JOBS = {
   mage: {
     name: '魔法使い',
     tagline: '一番柔らかい。唯一の遠距離攻撃',
-    glyph: '🔥',
+    icon: 'hat',
+    sprite: 'mage',
     maxHp: 18,
     atk: 5,
     def: 1,
@@ -104,7 +112,8 @@ export const JOBS = {
   cleric: {
     name: '僧侶',
     tagline: '唯一の回復手段',
-    glyph: '✨',
+    icon: 'cross',
+    sprite: 'cleric',
     maxHp: 26,
     atk: 5,
     def: 2,

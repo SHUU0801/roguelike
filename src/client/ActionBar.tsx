@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon, TileIcon } from './Icon';
 import { itemDefOf } from '../shared/items';
 import { skillOf } from '../shared/skills';
 import type { GameState, Intent, ItemInstance } from '../shared/types';
@@ -91,7 +92,7 @@ export function ActionBar({
               const def = itemDefOf(item.itemId);
               return (
                 <div key={item.id} className="inventory-row">
-                  <span className="glyph">{def.glyph}</span>
+                  <TileIcon id={def.sprite} />
                   <span className="iname">{def.name}</span>
                   {isMine && playing && (
                     <>
@@ -125,7 +126,7 @@ export function ActionBar({
               const wait = waitOf(id);
               return (
                 <div key={id} className="inventory-row skill-row">
-                  <span className="glyph">{def.glyph}</span>
+                  <Icon id={def.icon} size={32} />
                   <span className="iname">
                     {def.name}
                     <span className="sdesc">{def.desc}</span>

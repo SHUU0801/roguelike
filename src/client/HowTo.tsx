@@ -1,4 +1,6 @@
 import { JOBS, JOB_IDS } from '../shared/jobs';
+import { BASE_SKILL, SKILLS } from '../shared/skills';
+import { Icon } from './Icon';
 import { MAX_DEPTH, TURN_LIMIT_MS } from '../shared/types';
 
 type Props = { onClose: () => void };
@@ -51,7 +53,10 @@ export function HowTo({ onClose }: Props) {
           <ul>
             <li>画面左下の十字ボタン。真ん中は待機</li>
             <li>盤のマスを直接タップしてもいい</li>
-            <li>PC は矢印キー / <code>.</code> 待機 / <code>g</code> 拾う / <code>m</code> 地図</li>
+            <li>
+              PC は矢印キー / <code>.</code> 待機 / <code>g</code> 拾う /{' '}
+              <code>s</code> わざ / <code>m</code> 地図
+            </li>
             <li>敵のいるマスへ進むと攻撃になる（ボタンは無い）</li>
           </ul>
 
@@ -65,9 +70,19 @@ export function HowTo({ onClose }: Props) {
 
           <h3>松明が時間の値段</h3>
           <p>
-            🔥 の数字は毎ターン1ずつ減る。<b>消えると毎ターン傷ついていく。</b>
+            <Icon id="torch2" size={16} /> の数字は毎ターン1ずつ減る。
+            <b>消えると毎ターン傷ついていく。</b>
             だから「安全な通路で粘る」が答えにならない。
             松明は落ちているので拾って継ぎ足す。
+          </p>
+
+          <h3>敵の向きを見る</h3>
+          <p>
+            敵のマスには、向いている方向に小さな三角が出る。
+            <b>灰色はまだ気づいていない</b>、赤は気づいている。
+            気づいていない敵を殴ると<b>2倍のダメージ</b>が入り、
+            そのターンは殴り返されない。
+            視野は正面の45度・4マスだけなので、<b>横から回り込める</b>。
           </p>
 
           <h3>倒れても終わりではない</h3>
@@ -91,12 +106,14 @@ export function HowTo({ onClose }: Props) {
               return (
                 <li key={id}>
                   <b>
-                    {job.glyph} {job.name}
+                    <Icon id={job.icon} size={16} /> {job.name}
                   </b>
                   — {job.tagline}
                   <br />
                   <span className="dim-text">
-                    {job.skill.name}（{job.skill.cooldown}ターンに1回）: {job.skill.desc}
+                    {SKILLS[BASE_SKILL[id]].name}（
+                    {SKILLS[BASE_SKILL[id]].cooldown}ターンに1回）:{' '}
+                    {SKILLS[BASE_SKILL[id]].desc}
                   </span>
                 </li>
               );

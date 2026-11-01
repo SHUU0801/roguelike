@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActionBar } from './ActionBar';
 import { DPad } from './DPad';
 import { FloorView } from './FloorView';
+import { Icon } from './Icon';
 import { HowTo } from './HowTo';
 import { LevelUp } from './LevelUp';
 import { Lobby } from './Lobby';
@@ -214,7 +215,7 @@ export function App() {
               .filter(Boolean)
               .join(' ')}
           >
-            🔥 {me.fuel}
+            <Icon id="torch2" size={16} /> {me.fuel}
           </span>
         )}
         <span className="turn">{state.turn}</span>
@@ -225,7 +226,7 @@ export function App() {
           aria-label="あそびかた"
           onClick={() => setHowToOpen(true)}
         >
-          ❓
+          <Icon id="question" size={16} />
         </button>
         <button
           className="mute"
@@ -233,7 +234,7 @@ export function App() {
           aria-pressed={mapOpen}
           onClick={() => setMapOpen((v) => !v)}
         >
-          🗺
+          <Icon id="map" size={16} />
         </button>
         <button
           className="mute"
@@ -244,7 +245,7 @@ export function App() {
             setMutedState(next);
           }}
         >
-          {muted ? '🔇' : '🔊'}
+          <Icon id={muted ? 'mute' : 'sound'} size={16} />
         </button>
       </header>
 

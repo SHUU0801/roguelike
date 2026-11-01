@@ -28,6 +28,8 @@ const LAYOUT = [
   'floor', 'wall', 'stairs', 'potion', 'bomb', 'sword', 'shield', 'scroll', 'torch',
   // 2行目: 2コマのもの（必ず対で置く）
   'hero', 'hero_b', 'goblin', 'goblin_b', 'bat', 'bat_b', 'slime', 'slime_b', 'blank',
+  // 3行目: 職業ごとの姿。全員が同じ冒険者だと、盤の上で誰が何なのか分からない
+  'warrior', 'warrior_b', 'rogue', 'rogue_b', 'mage', 'mage_b', 'cleric', 'cleric_b', 'blank',
 ];
 
 const PALETTE = {
@@ -111,6 +113,7 @@ const ART = {
     '.......oo.......', '.......oo.......', '.......oo.......', '................',
   ],
   // 枠を埋めるためだけの空。並びを崩さないために置いてある
+
   blank: [
     '................', '................', '................', '................',
     '................', '................', '................', '................',
@@ -175,6 +178,263 @@ const ART = {
     '.KNNNNNNNNNNNNK.', '.KnNNNNNNNNNNnK.', '.KnnNNNNNNNNnnK.', '.KnnnnnnnnnnnnK.',
     '..KKKKKKKKKKKK..', '................', '................', '................',
   ],
+
+  // --- 職業ごとの姿。番号だけでは「誰が盾役か」が盤上で分からない ---
+
+  warrior: [
+    '................', '.......RR.......', '.....KKRRKK.....', '....KLLLLLLK....',
+    '....KLKKKKLK....', '....KLSSSSLK....', '.....KSSSSK.....', '....KKGGGGKK....',
+    '...KGGGGGGGGK...', '...KGLGGGGLGK...', '...KGGGGGGGGK...', '....KGGGGGGK....',
+    '....KDD..DDK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+  warrior_b: [
+    '................', '................', '.......RR.......', '.....KKRRKK.....',
+    '....KLLLLLLK....', '....KLKKKKLK....', '....KLSSSSLK....', '.....KSSSSK.....',
+    '....KKGGGGKK....', '...KGGGGGGGGK...', '...KGLGGGGLGK...', '...KGGGGGGGGK...',
+    '....KGGGGGGK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+
+  rogue: [
+    '................', '......KKKK......', '....KKnnnnKK....', '...KnnnnnnnnK...',
+    '...KnnSSSSnnK...', '....KSKSSKSK....', '.....KSSSSK.....', '....KKnnnnKK....',
+    '...KnnnnnnnnK...', '..KLKnnnnnnnK...', '..KWKnnYYnnnK...', '...K.KnnnnnnK...',
+    '....KDD..DDK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+  rogue_b: [
+    '................', '................', '......KKKK......', '....KKnnnnKK....',
+    '...KnnnnnnnnK...', '...KnnSSSSnnK...', '....KSKSSKSK....', '.....KSSSSK.....',
+    '....KKnnnnKK....', '...KnnnnnnnnK...', '..KLKnnnnnnnK...', '..KWKnnYYnnnK...',
+    '...K.KnnnnnnK...', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+
+  mage: [
+    '.......KK.......', '......KPPK......', '.....KPPPPK.....', '....KPPPPPPK....',
+    '..KKKKKKKKKKKK..', '....KLSSSSLK....', '....KLSKKSLK....', '.....KSSSSK.....',
+    '....KKPPPPKK....', '...KPPPPPPPPK...', '...KPPPYYPPPK...', '...KPPPPPPPPK...',
+    '....KPPPPPPK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+  mage_b: [
+    '................', '.......KK.......', '......KPPK......', '.....KPPPPK.....',
+    '....KPPPPPPK....', '..KKKKKKKKKKKK..', '....KLSSSSLK....', '....KLSKKSLK....',
+    '.....KSSSSK.....', '....KKPPPPKK....', '...KPPPPPPPPK...', '...KPPPYYPPPK...',
+    '...KPPPPPPPPK...', '....KPPPPPPK....', '...KKDK..KDKK...', '................',
+  ],
+
+  cleric: [
+    '.....YYYYYY.....', '.....KKKKKK.....', '....KLLLLLLK....', '....KLSSSSLK....',
+    '....KLSKKSLK....', '.....KSSSSK.....', '....KKWWWWKK....', '...KWWWYYWWWK...',
+    '...KWWWYYWWWK...', '...KWYYYYYYWK...', '...KWWWYYWWWK...', '....KWWYYWWK....',
+    '....KWWWWWWK....', '....KDD..DDK....', '...KKDK..KDKK...', '................',
+  ],
+  cleric_b: [
+    '................', '.....YYYYYY.....', '.....KKKKKK.....', '....KLLLLLLK....',
+    '....KLSSSSLK....', '....KLSKKSLK....', '.....KSSSSK.....', '....KKWWWWKK....',
+    '...KWWWYYWWWK...', '...KWWWYYWWWK...', '...KWYYYYYYWK...', '...KWWWYYWWWK...',
+    '....KWWYYWWK....', '....KWWWWWWK....', '...KKDK..KDKK...', '................',
+  ],
+};
+
+
+
+/**
+ * UI のアイコン。盤面とは別のシートにする。
+ *
+ * 絵文字をやめた理由は見た目の統一だけではない。
+ * 絵文字は端末ごとに絵が違う（iPhone と Android と Windows で別物）ので、
+ * 「この印は何か」を説明に書けない。自分で描けば、どこで開いても同じ絵になる。
+ *
+ * 盤面のシートと分けているのは、盤は 16x16 のマスに縛られているが、
+ * アイコンは増減が多く、並びを変えても盤に影響が出ないようにするため。
+ */
+const ICON_COLS = 8;
+
+const ICON_LAYOUT = [
+  'helmet', 'dagger', 'hat', 'cross', 'axe', 'horn', 'shield2', 'smoke',
+  'flask', 'flame', 'bolt', 'ice', 'sparkle', 'note', 'hammer', 'heart',
+  'sword2', 'torch2', 'wing', 'star', 'drop', 'burst', 'question', 'map',
+  'sound', 'mute', 'blank', 'blank', 'blank', 'blank', 'blank', 'blank',
+];
+
+const ICON_ART = {
+  // --- 職業 ---
+  // 兜。24px で出すので、穴は細く2つに分ける。
+  // 横一直線の大きな穴にしたら、潰れてただの灰色の塊に見えた
+  helmet: [
+    '................', '.......RR.......', '......KRRK......', '.....KKRRKK.....',
+    '...KKLLLLLLKK...', '..KLLLLLLLLLLK..', '..KLLLLLLLLLLK..', '..KLLKKKKKKLLK..',
+    '..KLLK.KK.KLLK..', '..KLLK.KK.KLLK..', '..KLLKKKKKKLLK..', '..KLLLLLLLLLLK..',
+    '..KGGGGGGGGGGK..', '..KGGGGGGGGGGK..', '...KKKKKKKKKK...', '................',
+  ],
+  dagger: [
+    '...........KK...', '..........KWWK..', '.........KWWWK..', '........KWWWK...',
+    '.......KWWWK....', '......KWWWK.....', '.....KWWWK......', '....KWWWK.......',
+    '...KWWWK........', '..KKWWKKK.......', '..KoKKKoK.......', '..KoooooK.......',
+    '...KooooK.......', '....KooK........', '....KooK........', '.....KK.........',
+  ],
+  hat: [
+    '.......KK.......', '.......KPK......', '......KPPK......', '......KPPPK.....',
+    '.....KPPPPK.....', '.....KPPPPPK....', '....KPPPPPPK....', '....KPPPPPPPK...',
+    '...KPPPYYPPPK...', '...KPPPYYPPPK...', '..KPPPPPPPPPPK..', '.KPPPPPPPPPPPPK.',
+    'KKKKKKKKKKKKKKKK', 'KLLLLLLLLLLLLLLK', 'KKKKKKKKKKKKKKKK', '................',
+  ],
+  cross: [
+    '................', '......KYYK......', '......KYYK......', '......KYYK......',
+    '..KKKKKYYKKKKK..', '..KYYYYYYYYYYK..', '..KYYYYYYYYYYK..', '..KKKKKYYKKKKK..',
+    '......KYYK......', '......KYYK......', '......KYYK......', '......KYYK......',
+    '......KYYK......', '......KKKK......', '................', '................',
+  ],
+
+  // --- 戦士のわざ ---
+  axe: [
+    '................', '...KKKK.........', '..KWWWWKK.......', '.KWWWWWWWK..KK..',
+    '.KWWWWWWWWK.KoK.', '.KWWWWWWWWK.KoK.', '.KWWWWWWWWKKKoK.', '.KWWWWWWWWWWWoK.',
+    '.KWWWWWWWWKKKoK.', '.KWWWWWWWWK.KoK.', '.KWWWWWWWK..KoK.', '..KWWWWKK...KoK.',
+    '...KKKK.....KoK.', '............KoK.', '............KKK.', '................',
+  ],
+  horn: [
+    '................', '................', '.....KKK........', '...KKOOOKK......',
+    '..KOOOOOOOK.....', '..KOOOOOOOOK....', '..KOOOOOOOOOK.K.', '..KOOOOOOOOOOK..',
+    '..KOOOOOOOOOK.K.', '..KOOOOOOOOK....', '..KOOOOOOOK.....', '...KKOOOKK......',
+    '.....KKK........', '................', '................', '................',
+  ],
+  shield2: [
+    '................', '.KKKKKKKKKKKKKK.', '.KLLLLLLLLLLLLK.', '.KLBBBBBBBBBBLK.',
+    '.KLBBBBYYBBBBLK.', '.KLBBBYYYYBBBLK.', '.KLBBYYYYYYBBLK.', '.KLBBBYYYYBBBLK.',
+    '.KLBBBBYYBBBBLK.', '.KLBBBBBBBBBBLK.', '..KLBBBBBBBBLK..', '...KLBBBBBBLK...',
+    '....KLBBBBLK....', '.....KLBBLK.....', '......KLLK......', '.......KK.......',
+  ],
+
+  // --- 盗賊のわざ ---
+  smoke: [
+    '................', '....KKK...KK....', '..KKLLLKKKLLK...', '.KLLLLLLLLLLLK..',
+    'KLLLLLLLLLLLLLK.', 'KLLLKKKLLLKKLLK.', '.KLLLLLLLLLLLK..', '..KKLLLLLLLKK...',
+    '....KKLLLKK.....', '......KKK.......', '................', '......KDK.......',
+    '.....KDDDK......', '....KDDDDDK.....', '.....KKKKK......', '................',
+  ],
+  flask: [
+    '......KKKK......', '......KLLK......', '......KLLK......', '.....KKLLKK.....',
+    '....KLLLLLLK....', '...KLLLLLLLLK...', '..KLLLLLLLLLLK..', '..KLPPPPPPPPLK..',
+    '..KLPPPNPPPPLK..', '..KLPPPPPPPNPK..', '..KLPNPPPPPPLK..', '..KLPPPPPPPPLK..',
+    '...KLPPPPPPLK...', '....KKKKKKKK....', '................', '................',
+  ],
+
+  // --- 魔法使いのわざ ---
+  flame: [
+    '.......KK.......', '......KOOK......', '......KOOK......', '.....KOOOOK.....',
+    '.....KOYYOK.....', '....KOYYYYOK....', '....KOYYYYOK....', '...KOYYWWYYOK...',
+    '...KOYYWWYYOK...', '..KOOYYWWYYOOK..', '..KOOYYYYYYOOK..', '..KOOOYYYYOOOK..',
+    '...KOOOOOOOOK...', '....KKOOOOKK....', '......KKKK......', '................',
+  ],
+  bolt: [
+    '..........KK....', '.........KYK....', '........KYYK....', '.......KYYK.....',
+    '......KYYYK.....', '.....KYYYK......', '....KYYYYKKKK...', '...KYYYYYYYYK...',
+    '...KKKKYYYYYK...', '......KYYYYK....', '.....KYYYK......', '....KYYYK.......',
+    '...KYYK.........', '..KYYK..........', '..KYK...........', '..KK............',
+  ],
+  ice: [
+    '.......KK.......', '......KWWK......', '..K...KWWK...K..', '..KK..KWWK..KK..',
+    '...KK.KWWK.KK...', '....KKKWWKKK....', '.....KWWWWK.....', 'KKKKKWWWWWWKKKKK',
+    'KWWWWWWWWWWWWWWK', 'KKKKKWWWWWWKKKKK', '.....KWWWWK.....', '....KKKWWKKK....',
+    '...KK.KWWK.KK...', '..KK..KWWK..KK..', '..K...KWWK...K..', '......KKKK......',
+  ],
+
+  // --- 僧侶のわざ ---
+  sparkle: [
+    '.......KK.......', '......KWWK......', '......KWWK......', '...K..KYYK..K...',
+    '...KK.KYYK.KK...', '....KKKYYKKK....', '.....KYYYYK.....', '.KKKKYYWWYYKKKK.',
+    '.KYYYYYWWYYYYYK.', '.KKKKYYWWYYKKKK.', '.....KYYYYK.....', '....KKKYYKKK....',
+    '...KK.KYYK.KK...', '...K..KWWK..K...', '......KWWK......', '.......KK.......',
+  ],
+  note: [
+    '.........KKKKKK.', '.........KWWWWWK', '.........KWWWWWK', '.........KWKKKKK',
+    '.........KWK....', '.........KWK....', '.........KWK....', '.........KWK....',
+    '.........KWK....', '.......KKKWK....', '.....KKWWWWK....', '....KWWWWWWK....',
+    '....KWWWWWK.....', '....KWWWWK......', '.....KKKK.......', '................',
+  ],
+  hammer: [
+    '................', '..KKKKKKKKKK....', '.KLLLLLLLLLLK...', 'KLLLLLLLLLLLLK..',
+    'KLLKKKKKKKKLLK..', 'KLLK......KLLK..', 'KLLKKKKKKKKLLK..', 'KLLLLLLLLLLLLK..',
+    '.KLLLLKoKLLLLK..', '..KKKKKoKKKKK...', '.......KoK......', '.......KoK......',
+    '.......KoK......', '.......KoK......', '.......KKK......', '................',
+  ],
+
+  // --- 強化カード ---
+  heart: [
+    '................', '..KKKK....KKKK..', '.KRRRRKKKKRRRRK.', 'KRRRRRRRRRRRRRRK',
+    'KRRWRRRRRRRRRRRK', 'KRRWRRRRRRRRRRRK', 'KRRRRRRRRRRRRRRK', '.KRRRRRRRRRRRRK.',
+    '..KRRRRRRRRRRK..', '...KRRRRRRRRK...', '....KRRRRRRK....', '.....KRRRRK.....',
+    '......KRRK......', '.......KK.......', '................', '................',
+  ],
+  sword2: [
+    '.......KK.......', '......KLWK......', '......KLWK......', '......KLWK......',
+    '......KLWK......', '......KLWK......', '......KLWK......', '......KLWK......',
+    '......KLWK......', '...KKKKLWKKKK...', '...KYYYYYYYYK...', '...KKKKooKKKK...',
+    '......KooK......', '......KooK......', '......KKKK......', '................',
+  ],
+  torch2: [
+    '................', '.......OO.......', '......OYYO......', '.....OYYYYO.....',
+    '.....OYWWYO.....', '.....OYYYYO.....', '......OYYO......', '.......OO.......',
+    '.......oo.......', '.......oo.......', '.......oo.......', '.......oo.......',
+    '.......oo.......', '.......oo.......', '.......oo.......', '................',
+  ],
+  wing: [
+    '................', '................', '...........KKK..', '........KKKWWWK.',
+    '.....KKKWWWWWWK.', '..KKKWWWWWWWWWK.', '.KWWWWWWWWWWWWK.', '.KWWWWWWWWWWWK..',
+    '.KWWWWWWWWWWK...', '.KWKWWKWWWWK....', '.KWKWWKWWWK.....', '..KKWKWWKK......',
+    '....KKWK........', '......KK........', '................', '................',
+  ],
+  star: [
+    '.......KK.......', '......KYYK......', '......KYYK......', '.....KYYYYK.....',
+    '.....KYYYYK.....', 'KKKKKKYYYYKKKKKK', 'KYYYYYYYYYYYYYYK', '.KYYYYYYYYYYYYK.',
+    '..KYYYYYYYYYYK..', '...KYYYYYYYYK...', '..KYYYYKKYYYYK..', '..KYYYK..KYYYK..',
+    '.KYYYK....KYYYK.', '.KYYK......KYYK.', '.KKK........KKK.', '................',
+  ],
+  drop: [
+    '.......KK.......', '.......KK.......', '......KRRK......', '......KRRK......',
+    '.....KRRRRK.....', '.....KRRRRK.....', '....KRRRRRRK....', '....KRRRRRRK....',
+    '...KRRRRRRRRK...', '...KRWRRRRRRK...', '..KRRWRRRRRRRK..', '..KRRRRRRRRRRK..',
+    '...KRRRRRRRRK...', '....KRRRRRRK....', '.....KKKKKK.....', '................',
+  ],
+  burst: [
+    '.......KK.......', '...K...KYK...K..', '...KK..KYK..KK..', '....KK.KYK.KK...',
+    '.....KKKYKKK....', '......KYYYK.....', 'K.....KYWYK.....', 'KK...KYWWWYK...K',
+    'KKKKKYWWWWWYKKKK', 'KK...KYWWWYK...K', 'K.....KYWYK.....', '......KYYYK.....',
+    '.....KKKYKKK....', '....KK.KYK.KK...', '...KK..KYK..KK..', '...K...KKK...K..',
+  ],
+
+  // --- 画面上部のボタン ---
+  question: [
+    '................', '.....KKKKKK.....', '....KYYYYYYK....', '...KYYKKKKYYK...',
+    '...KYYK..KYYK...', '...KKK...KYYK...', '.........KYYK...', '........KYYK....',
+    '.......KYYK.....', '.......KYYK.....', '.......KYK......', '.......KKK......',
+    '................', '.......KK.......', '......KYYK......', '.......KK.......',
+  ],
+  // 地図。16px で出すので、細かい模様は入れない。
+  // 緑の点を散らした版を作ったら、縮んだときにただのノイズになった
+  map: [
+    '................', '..KKKKKKKKKKKK..', '..KWWWWWWWWWWK..', '..KWWKWWWWWWWK..',
+    '..KWKKKWWWWWWK..', '..KWKWWKWWWWWK..', '..KWWWWKWWWWWK..', '..KWWWWKKWWWWK..',
+    '..KWWWWWKKWWWK..', '..KWWWWWWKRRWK..', '..KWWWWWWKRRWK..', '..KWWWWWWWWWWK..',
+    '..KKKKKKKKKKKK..', '................', '................', '................',
+  ],
+  sound: [
+    '................', '..........KK....', '.........KWK....', '........KWWK....',
+    '.......KWWWK.K..', '..KKKKKWWWWK.K..', '..KWWWWWWWWKK.K.', '..KWWWWWWWWK.K.K',
+    '..KWWWWWWWWK.K.K', '..KWWWWWWWWKK.K.', '..KKKKKWWWWK.K..', '.......KWWWK.K..',
+    '........KWWK....', '.........KWK....', '..........KK....', '................',
+  ],
+  mute: [
+    '................', '..........KK....', '.........KWK....', '........KWWK....',
+    '.......KWWWK....', '..KKKKKWWWWK.R.R', '..KWWWWWWWWK.RR.', '..KWWWWWWWWK..R.',
+    '..KWWWWWWWWK.RR.', '..KKKKKWWWWK.R.R', '.......KWWWK....', '........KWWK....',
+    '.........KWK....', '..........KK....', '................', '................',
+  ],
+  blank: [
+    '................', '................', '................', '................',
+    '................', '................', '................', '................',
+    '................', '................', '................', '................',
+    '................', '................', '................', '................',
+  ],
 };
 
 // --- ここから下は PNG を書き出すだけ ---
@@ -232,36 +492,49 @@ function toPng(width, height, pixels) {
   ]);
 }
 
-const rows = Math.ceil(LAYOUT.length / COLS);
-const W = COLS * TILE;
-const H = rows * TILE;
-const px = new Uint8Array(W * H * 4);
+/** 文字絵の並びから1枚の PNG を書き出す */
+function buildSheet(layout, art, cols, outPath) {
+  const rows = Math.ceil(layout.length / cols);
+  const W = cols * TILE;
+  const H = rows * TILE;
+  const px = new Uint8Array(W * H * 4);
 
-LAYOUT.forEach((name, index) => {
-  const art = ART[name];
-  if (!art) throw new Error(`'${name}' の絵が ART にない`);
-  if (art.length !== TILE) throw new Error(`'${name}': ${art.length} 行（${TILE} 行であること）`);
-
-  const ox = (index % COLS) * TILE;
-  const oy = Math.floor(index / COLS) * TILE;
-
-  art.forEach((line, y) => {
-    if (line.length !== TILE) {
-      throw new Error(`'${name}' の ${y + 1} 行目: ${line.length} 文字（${TILE} 文字であること）`);
+  layout.forEach((name, index) => {
+    const cell = art[name];
+    if (!cell) throw new Error(`'${name}' の絵が無い`);
+    if (cell.length !== TILE) {
+      throw new Error(`'${name}': ${cell.length} 行（${TILE} 行であること）`);
     }
-    [...line].forEach((ch, x) => {
-      if (!(ch in PALETTE)) throw new Error(`'${name}': 未定義の文字 '${ch}'`);
-      const hex = PALETTE[ch];
-      if (hex === null) return; // 透明
-      const [r, g, b] = rgb(hex);
-      const i = ((oy + y) * W + (ox + x)) * 4;
-      px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255;
+
+    const ox = (index % cols) * TILE;
+    const oy = Math.floor(index / cols) * TILE;
+
+    cell.forEach((line, y) => {
+      if (line.length !== TILE) {
+        throw new Error(
+          `'${name}' の ${y + 1} 行目: ${line.length} 文字（${TILE} 文字であること）`,
+        );
+      }
+      [...line].forEach((ch, x) => {
+        if (!(ch in PALETTE)) throw new Error(`'${name}': 未定義の文字 '${ch}'`);
+        const hex = PALETTE[ch];
+        if (hex === null) return; // 透明
+        const [r, g, b] = rgb(hex);
+        const i = ((oy + y) * W + (ox + x)) * 4;
+        px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255;
+      });
     });
   });
-});
 
-const out = resolve(dirname(fileURLToPath(import.meta.url)), '../public/sprites/tiles.png');
-mkdirSync(dirname(out), { recursive: true });
-writeFileSync(out, toPng(W, H, px));
-console.log(`${out} に書き出した（${W}x${H}, ${LAYOUT.length} 枚 / ${COLS} 列）`);
-console.log(`並び: ${LAYOUT.join(', ')}`);
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, toPng(W, H, px));
+  console.log(`${outPath} （${W}x${H}, ${layout.length} 枚 / ${cols} 列）`);
+}
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+buildSheet(LAYOUT, ART, COLS, resolve(here, '../public/sprites/tiles.png'));
+buildSheet(ICON_LAYOUT, ICON_ART, ICON_COLS, resolve(here, '../public/sprites/icons.png'));
+
+console.log(`盤面の並び: ${LAYOUT.join(', ')}`);
+console.log(`アイコンの並び: ${ICON_LAYOUT.join(', ')}`);

@@ -16,7 +16,7 @@ export const SHEET = {
   url: '/sprites/tiles.png',
   tile: 16,
   cols: 9,
-  rows: 2,
+  rows: 3,
 } as const;
 
 export type SpriteId =
@@ -32,7 +32,12 @@ export type SpriteId =
   | 'hero'
   | 'goblin'
   | 'bat'
-  | 'slime';
+  | 'slime'
+  // 職業ごとの姿
+  | 'warrior'
+  | 'rogue'
+  | 'mage'
+  | 'cleric';
 
 /**
  * シート上の通し番号。左上から右へ、折り返して下へ。
@@ -53,6 +58,11 @@ export const SPRITE_INDEX: Record<SpriteId, number> = {
   goblin: 11,
   bat: 13,
   slime: 15,
+  // 3行目
+  warrior: 18,
+  rogue: 20,
+  mage: 22,
+  cleric: 24,
 };
 
 /** 2コマのアニメーションを持つもの。2コマ目は index + 1 */
@@ -61,6 +71,10 @@ export const ANIMATED: ReadonlySet<SpriteId> = new Set<SpriteId>([
   'goblin',
   'bat',
   'slime',
+  'warrior',
+  'rogue',
+  'mage',
+  'cleric',
 ]);
 
 /** 地形 → スプライト */

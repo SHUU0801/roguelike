@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { JOBS, JOB_IDS, jobOf, type JobId } from '../shared/jobs';
 import { MAX_PLAYERS, type GameState } from '../shared/types';
 import { HowTo, howToSeen, markHowToSeen } from './HowTo';
+import { Icon } from './Icon';
 
 type Props = {
   state: GameState;
@@ -76,7 +77,7 @@ export function Lobby({ state, myId, inviteUrl, onStart, onChooseJob }: Props) {
                 className={`job-card${chosen ? ' on' : ''}`}
                 onClick={() => onChooseJob(id)}
               >
-                <span className="job-glyph">{job.glyph}</span>
+                <Icon id={job.icon} size={32} />
                 <span className="job-name">{job.name}</span>
                 <span className="job-tag">{job.tagline}</span>
                 <span className="job-stats">
@@ -103,7 +104,7 @@ export function Lobby({ state, myId, inviteUrl, onStart, onChooseJob }: Props) {
         <ul className="party-list">
           {players.map((p) => (
             <li key={p.id}>
-              <b>{p.slot}</b> {jobOf(p.job).glyph} {jobOf(p.job).name}
+              <b>{p.slot}</b> <Icon id={jobOf(p.job).icon} size={16} /> {jobOf(p.job).name}
               {p.id === myId && <span className="you">あなた</span>}
             </li>
           ))}

@@ -81,7 +81,12 @@ npm run sprites
 ```
 
 `tools/make-sprites.mjs` の中の文字絵を書き換えて実行すると、
-`public/sprites/tiles.png` が作り直される。1文字 = 1ピクセル。
+`public/sprites/tiles.png`（盤面）と `public/sprites/icons.png`（UI）が
+作り直される。1文字 = 1ピクセル。
+
+**UI に絵文字は使わない。** 端末ごとに絵が変わるので、「この印は何か」を
+説明に書けなくなるため。アイコンは 16 の倍数の大きさでだけ出すこと
+（端数だと 1 ドットが間引かれて潰れる）。
 
 本物の素材に差し替えるときは、同じ並び順（`src/shared/sprites.ts` の `SPRITE_INDEX`）で
 16×16 のタイルを並べた PNG を同じ場所に置くだけでいい。

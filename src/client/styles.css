@@ -411,25 +411,34 @@ button.wide.primary {
 /*
  * 歩き。
  *
- * 以前は slide-in（滑り込むだけ）だった。絵が平行移動するので、
- * 歩いているというより氷の上を滑っているように見えた。
- * 上下に跳ねる動きと、着地でつぶれる動きを足すと「踏み出した」になる。
+ * もとは slide-in（平行移動だけ）で、氷の上を滑っているように見えた。
+ * 次に大きく1回跳ねさせたら、今度は**跳んでいる**ように見えた。
+ *
+ * 歩きに見えるのは「小さい上下動が2回」。
+ * 人は1歩のあいだに重心が2回上下する（踏み出しと着地）ので、
+ * 山が1つだとジャンプ、2つだと歩行になる。振れ幅も 16% → 5% に落とした。
+ * つぶれ（scaleX）はやめた。横に潰れると着地の衝撃が出て、また跳躍に寄る。
+ *
  * あわせてコマも1回送る（2コマしかないので、1歩＝1コマ）。
  */
 @keyframes walk {
   0% {
-    transform: translate(calc(var(--dx, 0) * -100%), calc(var(--dy, 0) * -100%))
-      scale(1, 1);
+    transform: translate(calc(var(--dx, 0) * -100%), calc(var(--dy, 0) * -100%));
   }
-  45% {
+  25% {
+    transform: translate(calc(var(--dx, 0) * -70%), calc(var(--dy, 0) * -70%))
+      translateY(-5%) scaleY(1.03);
+  }
+  50% {
     transform: translate(calc(var(--dx, 0) * -45%), calc(var(--dy, 0) * -45%))
-      translateY(-16%) scale(0.94, 1.08);
+      translateY(1%) scaleY(0.98);
   }
-  80% {
-    transform: translate(0, 0) scale(1.08, 0.9);
+  75% {
+    transform: translate(calc(var(--dx, 0) * -18%), calc(var(--dy, 0) * -18%))
+      translateY(-5%) scaleY(1.03);
   }
   100% {
-    transform: translate(0, 0) scale(1, 1);
+    transform: translate(0, 0);
   }
 }
 
@@ -1214,18 +1223,149 @@ button.wide.primary {
   border: 4px solid transparent;
 }
 
-.facing.f-n { top: 0; left: 50%; margin-left: -4px; border-bottom-color: #d98a5a; border-top-width: 0; }
-.facing.f-s { bottom: 0; left: 50%; margin-left: -4px; border-top-color: #d98a5a; border-bottom-width: 0; }
-.facing.f-w { left: 0; top: 50%; margin-top: -4px; border-right-color: #d98a5a; border-left-width: 0; }
-.facing.f-e { right: 0; top: 50%; margin-top: -4px; border-left-color: #d98a5a; border-right-width: 0; }
+/*
+ * 気づいているかは三角の色で出す。
+ *
+ * 以前は 💤 を重ねていたが、絵文字は端末ごとに絵が違ううえ、
+ * ただでさえ狭いマスに札を2枚貼ることになる。
+ * 向きの印はどのみち要るので、その色に意味を持たせたほうが読む場所が1つで済む。
+ *
+ *   くすんだ灰色 … まだ気づいていない（忍び寄れる）
+ *   赤           … 気づいている（殴り返してくる）
+ */
+.facing { border-color: transparent; }
 
-/* 💤 / ❗ / ❄ / ☠。マスの左上に小さく重ねる */
-.mstate {
+.facing.f-n { top: 0; left: 50%; margin-left: -4px; border-bottom-color: #6b7280; border-top-width: 0; }
+.facing.f-s { bottom: 0; left: 50%; margin-left: -4px; border-top-color: #6b7280; border-bottom-width: 0; }
+.facing.f-w { left: 0; top: 50%; margin-top: -4px; border-right-color: #6b7280; border-left-width: 0; }
+.facing.f-e { right: 0; top: 50%; margin-top: -4px; border-left-color: #6b7280; border-right-width: 0; }
+
+.facing.awake.f-n { border-bottom-color: #d4594e; }
+.facing.awake.f-s { border-top-color: #d4594e; }
+.facing.awake.f-w { border-right-color: #d4594e; }
+.facing.awake.f-e { border-left-color: #d4594e; }
+
+/* 気づいた瞬間。マスの上に一度だけ「！」が跳ねる。絵文字は使わない */
+.notice {
   position: absolute;
-  top: 0;
-  left: 1px;
-  font-size: 10px;
-  line-height: 1;
+  top: -2px;
+  left: 50%;
+  width: 3px;
+  height: 11px;
+  margin-left: -1px;
   pointer-events: none;
-  text-shadow: 0 0 3px #000;
+  background:
+    linear-gradient(#e8c84a 0 7px, transparent 7px 9px, #e8c84a 9px 11px);
+  animation: notice-pop 0.6s ease-out forwards;
+}
+
+/* 凍結。マスを青く縁取る */
+.frozen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px #7ec8e3;
+  background: rgba(126, 200, 227, 0.16);
+}
+
+/* 毒。下から紫がにじむ */
+.poisoned {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(122, 92, 168, 0.5), transparent 60%);
+}
+
+/* --- わざの見た目 --- */
+
+/*
+ * わざが当たったマスに1回だけ重ねる。
+ *
+ * サーバーは「今わざを撃った」という状態を持たない（04_絵とアニメの方針.md）。
+ * クライアントが待ち時間の伸びから逆算して、当たった相手に乗せている。
+ * わざごとに色と形を変えるのは、ログを読まなくても何が起きたか分かるようにするため。
+ */
+.skillfx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+/* 斬る系: 斜めの白い筋が走る */
+@keyframes fx-slash {
+  0% { opacity: 0; transform: scale(0.6) rotate(-20deg); }
+  30% { opacity: 1; transform: scale(1.1) rotate(0deg); }
+  100% { opacity: 0; transform: scale(1.3) rotate(10deg); }
+}
+
+/* 広がる輪 */
+@keyframes fx-ring {
+  0% { opacity: 0.9; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+
+/* 点滅して焼く */
+@keyframes fx-flash {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.fx-cleave,
+.fx-backstab,
+.fx-smite {
+  background: linear-gradient(
+    42deg,
+    transparent 38%,
+    #ffffff 46%,
+    #ffffff 54%,
+    transparent 62%
+  );
+  animation: fx-slash 0.34s ease-out forwards;
+}
+
+.fx-fireball,
+.fx-bolt {
+  background: radial-gradient(circle, rgba(232, 200, 74, 0.95) 0%, rgba(224, 138, 60, 0.55) 55%, transparent 72%);
+  animation: fx-flash 0.38s ease-out forwards;
+}
+
+.fx-frost {
+  background: radial-gradient(circle, rgba(200, 240, 255, 0.95) 0%, rgba(126, 200, 227, 0.5) 60%, transparent 75%);
+  animation: fx-flash 0.42s ease-out forwards;
+}
+
+.fx-venom {
+  background: radial-gradient(circle, rgba(170, 120, 230, 0.9) 0%, rgba(122, 92, 168, 0.45) 60%, transparent 75%);
+  animation: fx-flash 0.42s ease-out forwards;
+}
+
+.fx-heal,
+.fx-bless {
+  border: 2px solid #79d19a;
+  background: radial-gradient(circle, rgba(121, 209, 154, 0.35) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: fx-ring 0.5s ease-out forwards;
+}
+
+.fx-taunt,
+.fx-bulwark {
+  border: 2px solid #e0c060;
+  border-radius: 50%;
+  animation: fx-ring 0.5s ease-out forwards;
+}
+
+.fx-vanish {
+  background: radial-gradient(circle, rgba(200, 206, 214, 0.75) 0%, transparent 70%);
+  animation: fx-flash 0.5s ease-out forwards;
+}
+
+/* 一覧に並べるアイコン。盤面と同じく拡大でぼやけさせない */
+.icon {
+  display: inline-block;
+  flex: none;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  vertical-align: -3px;
 }

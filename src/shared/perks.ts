@@ -14,6 +14,7 @@
  * 運が判断を生む側に回っているぶんには入れていい。
  */
 
+import type { IconId } from './icons';
 import type { JobId } from './jobs';
 import { SKILLS, type SkillId } from './skills';
 
@@ -40,7 +41,7 @@ export type PerkId =
 export type PerkDef = {
   name: string;
   desc: string;
-  glyph: string;
+  icon: IconId;
   /** あるとその職業にしか出ない */
   job?: JobId;
   /** あると新しいわざを覚える */
@@ -62,7 +63,7 @@ function skillCard(job: JobId, skill: SkillId): PerkDef {
   return {
     name: `${def.name}を覚える`,
     desc: def.desc,
-    glyph: def.glyph,
+    icon: def.icon,
     job,
     learn: skill,
     maxStacks: 1,
@@ -73,49 +74,49 @@ export const PERKS = {
   vitality: {
     name: '頑健',
     desc: '最大体力 +8（その場で +8 回復）',
-    glyph: '❤️',
+    icon: 'heart',
     maxStacks: 99,
   },
   power: {
     name: '剛力',
     desc: '攻撃力 +2',
-    glyph: '⚔️',
+    icon: 'sword2',
     maxStacks: 99,
   },
   guard: {
     name: '鉄壁',
     desc: '防御力 +1',
-    glyph: '🛡️',
+    icon: 'shield2',
     maxStacks: 3,
   },
   torch: {
     name: '長い芯',
     desc: '松明 +80',
-    glyph: '🔥',
+    icon: 'torch2',
     maxStacks: 99,
   },
   swift: {
     name: '早業',
     desc: '職業スキルの待ちが 1 ターン短くなる',
-    glyph: '💨',
+    icon: 'wing',
     maxStacks: 2,
   },
   focus: {
     name: '極め',
     desc: '職業スキルの威力 +4',
-    glyph: '✴️',
+    icon: 'star',
     maxStacks: 3,
   },
   mend: {
     name: '吸命',
     desc: '敵を倒すたび体力 +2',
-    glyph: '🩸',
+    icon: 'drop',
     maxStacks: 2,
   },
   surge: {
     name: '底力',
     desc: '体力が全快し、最大体力 +4',
-    glyph: '🌟',
+    icon: 'burst',
     maxStacks: 99,
   },
 

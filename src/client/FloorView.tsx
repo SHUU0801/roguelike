@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { itemDefOf } from '../shared/items';
+import { jobOf } from '../shared/jobs';
 import { speciesOf } from '../shared/monsters';
 import { ANIMATED, SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../shared/sprites';
 import {
@@ -129,8 +130,11 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
 
       // 乗っているもの（Actor > アイテム）。記憶だけのマスには出さない
       const item = visible && !occupant ? itemAt(state, x, y) : undefined;
+      // プレイヤーは職業ごとに姿が違う。全員同じ絵だと番号でしか見分けられない
       const topSprite: SpriteId | null = occupant
-        ? speciesOf(occupant.speciesId).sprite
+        ? occupant.kind === 'player'
+          ? jobOf(occupant.job).sprite
+          : speciesOf(occupant.speciesId).sprite
         : item
           ? itemDefOf(item.itemId).sprite
           : null;
@@ -198,7 +202,7 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
 
           {/* 倒れた仲間。薄く寝かせて描く */}
           {sprites && fallen && (
-            <span className="sprite fallen" style={spriteStyle('hero')} />
+            <span className="sprite fallen" style={spriteStyle(jobOf(fallen.job).sprite)} />
           )}
 
           {/* 誰が誰かの目印。全員が同じ見た目なので番号が要る */}
@@ -212,19 +216,27 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
             向きを画面に出して初めて、回り込みが判断になる。
           */}
           {occupant?.kind === 'monster' && (
-            <span className={`facing f-${occupant.facing}`} />
+            <span
+              className={`facing f-${occupant.facing}${occupant.aware ? ' awake' : ''}`}
+            />
           )}
-          {occupant?.kind === 'monster' && (
-            <span className="mstate">
-              {hasEffect(occupant, 'stun', state.turn)
-                ? '❄'
-                : turnEffects.noticed.has(occupant.id)
-                  ? '❗'
-                  : occupant.aware
-                    ? ''
-                    : '💤'}
-              {hasEffect(occupant, 'poison', state.turn) && '☠'}
-            </span>
+          {/* わざが当たったマス。わざごとに色と形が違う */}
+          {occupant && turnEffects.skillHits?.ids.includes(occupant.id) && (
+            <span
+              key={`fx-${state.turn}`}
+              className={`skillfx fx-${turnEffects.skillHits.skill}`}
+            />
+          )}
+
+          {/* 気づいた瞬間だけ出す印。常設の札は増やさない（向きの色で足りる） */}
+          {occupant?.kind === 'monster' && turnEffects.noticed.has(occupant.id) && (
+            <span key={`n-${state.turn}`} className="notice" />
+          )}
+          {occupant?.kind === 'monster' && hasEffect(occupant, 'stun', state.turn) && (
+            <span className="frozen" />
+          )}
+          {occupant?.kind === 'monster' && hasEffect(occupant, 'poison', state.turn) && (
+            <span className="poisoned" />
           )}
 
           {/* 敵の残り体力。絵文字だけだと「あと何発で倒せるか」が分からない */}
