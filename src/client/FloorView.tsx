@@ -263,9 +263,39 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
     }
   }
 
+  /*
+   * カメラ。
+   *
+   * 自キャラは常に画面の真ん中にいる。つまり**自分は画面の上で動いていない**。
+   * なのに自分のスプライトにも移動アニメを掛けていたので、
+   * 「自分が滑る」と「盤が瞬間移動する」が同時に起きて、
+   * カメラが遅れて追いかけているように見えていた。
+   *
+   * 動かすのは盤のほう。1歩ぶん逆向きにずらした位置から 0 へ戻す。
+   * 自分のスプライトは位置を動かさない（CSS 側で打ち消してある）。
+   *
+   * `turnEffects.turn === state.turn` で待つのは、効果の計算が
+   * 1レンダー遅れて届くため。先に class を付けてしまうと、
+   * 次のターンで class が変わらずアニメが再生されない。
+   */
+  const myMove = turnEffects.turn === state.turn ? turnEffects.effects.get(myId) : undefined;
+  const pan = myMove?.kind === 'moved' ? myMove : null;
+
+  const floorStyle = {
+    gridTemplateColumns: `repeat(${VIEW_W}, 1fr)`,
+    '--cdx': pan ? pan.dx : 0,
+    '--cdy': pan ? pan.dy : 0,
+    '--cw': `${100 / VIEW_W}%`,
+    '--ch': `${100 / VIEW_H}%`,
+  } as CSSProperties;
+
   return (
-    <div className="floor" style={{ gridTemplateColumns: `repeat(${VIEW_W}, 1fr)` }}>
-      {cells}
+    // 外側で切る。盤が動く以上、動いている間ははみ出す。
+    // 切らないとヘッダーやログの上に盤が乗る
+    <div className="floor-wrap">
+      <div className={pan ? 'floor panning' : 'floor'} style={floorStyle}>
+        {cells}
+      </div>
     </div>
   );
 }

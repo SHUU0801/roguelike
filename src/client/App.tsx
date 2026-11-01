@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActionBar } from './ActionBar';
 import { DPad } from './DPad';
 import { FloorView } from './FloorView';
@@ -9,7 +9,7 @@ import { Lobby } from './Lobby';
 import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
 import { goToDungeon, useGame } from './useGame';
-import { bringHome, markCleared, spendFromStash } from './stash';
+import { bringHome, markCleared, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
 import { isMuted, setMuted, sfx } from './sfx';
 import type { ItemId } from '../shared/items';
@@ -48,6 +48,19 @@ export function App() {
   const [perkSnoozed, setPerkSnoozed] = useState(0);
   /** ホームで持ち込んだもの。決着したときに倉庫から引くのに使う */
   const broughtRef = useRef<ItemId[]>([]);
+
+  /*
+   * 画面に渡す関数は使い回す。毎回作り直すと、受け取った側の useEffect が
+   * レンダーのたびに走って送信の輪になる（useGame.ts に経緯）。
+   */
+  const sendLoadout = conn.status === 'open' ? conn.setLoadout : null;
+  const takeLoadout = useCallback(
+    (items: ItemId[]) => {
+      broughtRef.current = items;
+      sendLoadout?.(items);
+    },
+    [sendLoadout],
+  );
 
   const deadlineAt = conn.status === 'open' ? conn.state.deadlineAt : null;
   const secondsLeft = useSecondsLeft(deadlineAt);
@@ -99,6 +112,8 @@ export function App() {
     if (phase === 'won') {
       bringHome(carried);
       markCleared(conn.state.dungeon);
+      const mine = conn.state.actors.find((a) => a.id === conn.myId);
+      if (mine?.job) rememberSkills(mine.job, mine.skills);
     }
     // 持ち込んだぶんは、勝っても負けても倉庫から消す。
     // 勝った場合は carried に含まれて戻ってくる
@@ -188,10 +203,8 @@ export function App() {
         inviteUrl={inviteUrl}
         onStart={start}
         onChooseJob={conn.chooseJob}
-        onLoadout={(items) => {
-          broughtRef.current = items;
-          conn.setLoadout(items);
-        }}
+        onLoadout={takeLoadout}
+        onSkillPick={conn.setSkillPick}
         /* 合流した人は行き先を変えられない。変えると先に入っている人が困る */
         onChooseDungeon={new URLSearchParams(window.location.search).get('room') ? null : goToDungeon}
       />

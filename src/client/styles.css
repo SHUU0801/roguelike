@@ -59,11 +59,39 @@ body {
   font-weight: 600;
 }
 
+/* 盤の外枠。動いている間のはみ出しをここで切る */
+.floor-wrap {
+  overflow: hidden;
+  padding: 8px;
+}
+
 /* マス目。gridTemplateColumns は列数が可変なので JSX 側で指定する */
 .floor {
   display: grid;
   gap: 1px;
-  padding: 8px;
+}
+
+/*
+ * カメラ。自分が1歩動いたら、盤を1歩ぶん逆からずらして戻す。
+ * 自分ではなく世界のほうが動く。
+ *
+ * linear なのは歩きと同じ理由。終わりで減速すると、
+ * 画面が滑って止まる＝カメラに慣性があるように見える。
+ */
+@keyframes pan {
+  from {
+    transform: translate(
+      calc(var(--cdx, 0) * var(--cw, 0%)),
+      calc(var(--cdy, 0) * var(--ch, 0%))
+    );
+  }
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+.floor.panning {
+  animation: pan 0.32s linear;
 }
 
 .cell {
@@ -458,6 +486,19 @@ button.wide.primary {
   animation:
     walk 0.32s linear,
     idle-frames 0.32s steps(2, jump-none);
+}
+
+/*
+ * 自キャラだけは位置を動かさない。
+ *
+ * カメラが自分を追うので、自分は画面の上では一歩も動いていない。
+ * ここで動かすと、盤の動き（.floor.panning）と二重になって
+ * 行き過ぎてから戻るように見える。これがカメラの慣性の正体だった。
+ * コマ送りだけ残す（足は動いてほしい）。
+ */
+.sprite.self.moved,
+.sprite.anim.self.moved {
+  animation: idle-frames 0.32s steps(2, jump-none);
 }
 
 .sprite.lunge,
@@ -1565,3 +1606,107 @@ button.wide.primary {
 
 .hint-inline { font-size: 11px; font-weight: 400; color: #7b8694; }
 .warn { margin: 0; font-size: 12px; color: #e08a3c; }
+
+/* --- 下タブ --- */
+
+/*
+ * 1枚に全部載せていたら縦に長くなりすぎて、「潜る」に辿り着くのに
+ * スクロールが要るようになっていた。スマホのゲームが下タブなのは、
+ * 親指の届く場所に行き先を置くため。
+ */
+.lobby {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.lobby-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 14px 20px;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: #2a2e35;
+  border-top: 1px solid #2a2e35;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #7b8694;
+  background: #14161a;
+  border: 0;
+}
+
+.tab.on { color: #e0c060; background: #1b2029; }
+/* 選んでいるタブのアイコンだけ色を抜かない。他は沈ませる */
+.tab .icon { opacity: 0.55; }
+.tab.on .icon { opacity: 1; }
+
+/* ホームの要約。押すとその支度のタブへ飛ぶ */
+.summary { display: flex; flex-direction: column; gap: 1px; }
+
+.sum-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #2a2e35;
+}
+
+.sum-row:first-child { border-radius: 8px 8px 0 0; }
+.sum-row:last-child { border-radius: 0 0 8px 8px; }
+.sum-label { width: 64px; color: #9aa4b2; }
+.sum-value { flex: 1; }
+
+/* そうびのわざ一覧 */
+.skill-list { display: flex; flex-direction: column; gap: 6px; }
+
+.skill-list .skill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.skill-list .skill-row.on { border-color: #e0c060; background: #262317; }
+.skill-list .skill-row.base { opacity: 0.8; }
+
+.tagline-chip {
+  flex: none;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #9aa4b2;
+  background: #222730;
+  border-radius: 10px;
+}
+
+.skill-row .iname { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+.sdesc { font-size: 11px; color: #9aa4b2; }

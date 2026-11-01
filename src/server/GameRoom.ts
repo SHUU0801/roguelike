@@ -16,6 +16,7 @@ import {
   pushLog,
   removePlayer,
   setLoadout,
+  setSkillPick,
   startGame,
 } from './game';
 import { rearrange } from './backpack';
@@ -78,6 +79,10 @@ export class GameRoom extends Room {
       if (!Array.isArray(ids)) return;
       setLoadout(this.game, client.sessionId, ids.filter((v) => typeof v === 'string'));
       this.publish();
+    });
+
+    this.onMessage<unknown>('skillpick', (client, skillId) => {
+      setSkillPick(this.game, client.sessionId, typeof skillId === 'string' ? skillId : null);
     });
 
     this.onMessage('start', () => {

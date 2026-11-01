@@ -1,7 +1,7 @@
 import { ITEMS, type ItemId } from '../shared/items';
 import { dungeonOf, type DungeonId } from '../shared/dungeons';
 import { JOB_IDS, jobOf, type JobId } from '../shared/jobs';
-import { BASE_SKILL } from '../shared/skills';
+import { BASE_SKILL, SKILLS, isSkillId, type SkillId } from '../shared/skills';
 import { SPECIES, type SpeciesId } from '../shared/monsters';
 import {
   BAG_H,
@@ -65,6 +65,27 @@ export function createInitialGame(dungeon: DungeonId = 'ruin'): GameState {
  * ロビーの間だけ受け付ける。
  */
 const loadouts = new Map<string, ItemId[]>();
+/** ホームで選んだ「持ち込むわざ」。職業の基本わざに加えて1つ */
+const skillPicks = new Map<string, SkillId>();
+
+/**
+ * 持ち込むわざ。職業が合っていないものは受け取らない。
+ * 倉庫と同じで自己申告だが、職業の違うわざまで通すと見た目から破綻する。
+ */
+export function setSkillPick(state: GameState, id: string, skillId: string | null): void {
+  if (state.phase !== 'lobby') return;
+  const actor = state.actors.find((a) => a.id === id);
+  if (!actor) return;
+
+  if (skillId === null) {
+    skillPicks.delete(id);
+    return;
+  }
+  if (!isSkillId(skillId)) return;
+  if (SKILLS[skillId].job !== actor.job) return;
+  if (skillId === BASE_SKILL[actor.job ?? 'warrior']) return;
+  skillPicks.set(id, skillId);
+}
 
 export function setLoadout(state: GameState, id: string, itemIds: string[]): void {
   if (state.phase !== 'lobby') return;
@@ -99,6 +120,14 @@ export function startGame(state: GameState): void {
       }
     }
     loadouts.delete(player.id);
+
+    // 持ち込むわざ。覚え直す手間を省くぶん、浅いところを周回する意味が出る
+    const extra = skillPicks.get(player.id);
+    if (extra && SKILLS[extra].job === player.job && !player.skills.includes(extra)) {
+      player.skills.push(extra);
+      pushLog(state, `${player.slot}番は${SKILLS[extra].name}を覚えている`);
+    }
+    skillPicks.delete(player.id);
   }
 
   pushLog(state, 'ダンジョンに入った');

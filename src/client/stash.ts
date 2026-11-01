@@ -1,5 +1,7 @@
-import { ITEMS, type ItemId } from '../shared/items';
 import type { DungeonId } from '../shared/dungeons';
+import { ITEMS, type ItemId } from '../shared/items';
+import type { JobId } from '../shared/jobs';
+import { SKILLS, type SkillId } from '../shared/skills';
 
 /**
  * 倉庫と記録。ブラウザに貯める。
@@ -25,6 +27,7 @@ import type { DungeonId } from '../shared/dungeons';
 
 const STASH_KEY = 'roguelike:stash';
 const CLEARED_KEY = 'roguelike:cleared';
+const SKILLS_KEY = 'roguelike:skills';
 
 function read(key: string): string[] {
   try {
@@ -79,4 +82,41 @@ export function markCleared(id: DungeonId): void {
   const now = loadCleared();
   if (now.includes(id)) return;
   write(CLEARED_KEY, [...now, id]);
+}
+
+/**
+ * 覚えたわざの記録。職業ごとに貯める。
+ *
+ * わざは潜るたびにレベル1から覚え直すので、そのままだと持ち越すものが無い。
+ * **一度でも覚えたわざは記録して、次の潜行で1つ持ち込める**ことにした。
+ * 倉庫と同じ理屈で周回に乗る。
+ *
+ * 記録は踏破したときだけ（倒れたら残らない）。倉庫と同じ約束にして、
+ * 「持ち帰るには踏破が要る」を1つの決まりにまとめている。
+ */
+export function loadLearned(): Partial<Record<JobId, SkillId[]>> {
+  try {
+    const raw = localStorage.getItem(SKILLS_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    return parsed as Partial<Record<JobId, SkillId[]>>;
+  } catch {
+    return {};
+  }
+}
+
+export function learnedOf(job: JobId): SkillId[] {
+  return (loadLearned()[job] ?? []).filter((v): v is SkillId => v in SKILLS);
+}
+
+/** 踏破したときに、その周で覚えたわざを記録する */
+export function rememberSkills(job: JobId, skills: SkillId[]): void {
+  const all = loadLearned();
+  const now = new Set([...(all[job] ?? []), ...skills]);
+  try {
+    localStorage.setItem(SKILLS_KEY, JSON.stringify({ ...all, [job]: [...now] }));
+  } catch {
+    // 覚えられなくても遊べる
+  }
 }

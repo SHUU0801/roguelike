@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Client, type Room } from '@colyseus/sdk';
 import { isDungeonId, type DungeonId } from '../shared/dungeons';
 import type { ItemId } from '../shared/items';
@@ -136,6 +136,8 @@ export type Connection =
       moveItem: (instanceId: string, x: number, y: number, rot: number) => void;
       /** ホームで選んだ持ち込み */
       setLoadout: (items: ItemId[]) => void;
+      /** 持ち込むわざ。職業の基本わざに加えて1つ */
+      setSkillPick: (skillId: string | null) => void;
     };
 
 export function useGame(): Connection {
@@ -214,12 +216,35 @@ export function useGame(): Connection {
       moveItem: (instanceId: string, x: number, y: number, rot: number) =>
         room.send('rearrange', { instanceId, x, y, rot }),
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
+      setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
     };
   }
 
+  /*
+   * 送信口は部屋ごとに1度だけ作る。
+   *
+   * 毎回その場で関数を作っていたら、useEffect の依存に入れた画面側が
+   * **レンダーのたびに送信して無限ループ**になった。
+   * 送る → サーバーが配る → 再レンダー → また送る、の輪になる。
+   * 実際ホームの持ち込みで起きて、タブが勝手に戻っていた。
+   */
+  const api = useMemo(() => {
+    if (!room) return null;
+    return {
+      send: (intent: Intent) => room.send('intent', intent),
+      start: () => room.send('start'),
+      chooseJob: (job: JobId) => room.send('job', job),
+      takePerk: (perkId: PerkId) => room.send('perk', perkId),
+      moveItem: (instanceId: string, x: number, y: number, rot: number) =>
+        room.send('rearrange', { instanceId, x, y, rot }),
+      setLoadout: (items: ItemId[]) => room.send('loadout', items),
+      setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
+    };
+  }, [room]);
+
   if (error) return { status: 'error', message: error };
   if (closed) return { status: 'closed' };
-  if (!room || !state) return { status: 'connecting' };
+  if (!room || !state || !api) return { status: 'connecting' };
 
   const base = `${window.location.origin}${window.location.pathname}`;
 
@@ -229,11 +254,6 @@ export function useGame(): Connection {
     myId: room.sessionId,
     roomId: room.roomId,
     inviteUrl: `${base}?room=${room.roomId}`,
-    send: (intent) => room.send('intent', intent),
-    start: () => room.send('start'),
-    chooseJob: (job) => room.send('job', job),
-    takePerk: (perkId) => room.send('perk', perkId),
-    moveItem: (instanceId, x, y, rot) => room.send('rearrange', { instanceId, x, y, rot }),
-    setLoadout: (items) => room.send('loadout', items),
+    ...api,
   };
 }
