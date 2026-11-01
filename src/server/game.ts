@@ -7,7 +7,6 @@ import {
   BAG_H,
   BAG_W,
   FUEL_START,
-  MAX_DEPTH,
   actorAt,
   tileAt,
   type GameState,

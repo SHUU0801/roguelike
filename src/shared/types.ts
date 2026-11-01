@@ -33,12 +33,6 @@ export const DIR_DELTA: Record<Dir, Pos> = {
 };
 
 /**
- * 既定のダンジョンの深さ。実際の深さはダンジョンごとに違う
- * （shared/dungeons.ts の depth）。ここは表示の保険にだけ残してある。
- */
-export const MAX_DEPTH = 5;
-
-/**
  * 松明の残り。毎ターン1ずつ減り、0 になると毎ターン傷つく。
  *
  * これが「時間を資源にする」仕掛け（03_改善構成.md 段階B）。

@@ -1,7 +1,7 @@
 import { JOBS, JOB_IDS } from '../shared/jobs';
 import { BASE_SKILL, SKILLS } from '../shared/skills';
 import { Icon } from './Icon';
-import { MAX_DEPTH, TURN_LIMIT_MS } from '../shared/types';
+import { TURN_LIMIT_MS } from '../shared/types';
 
 type Props = { onClose: () => void };
 
@@ -45,7 +45,10 @@ export function HowTo({ onClose }: Props) {
         <div className="howto-body">
           <h3>目的</h3>
           <p>
-            地下 {MAX_DEPTH} 階まで降りれば踏破。全員が倒れると終わり。
+            {/* 階数はダンジョンごとに違う（遺跡 3・洞窟 5・氷 7）。
+                ここに数字を書くと、どれに潜っていても同じ数字が出てしまう */}
+            一番下の階まで降りれば踏破。何階まであるかはダンジョンの札に出ている。
+            全員が倒れると終わり。
             階段は誰か1人が乗ったうえで、<b>全員が「降りる」を押す</b>と進む。
           </p>
 

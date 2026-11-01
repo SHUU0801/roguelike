@@ -1129,8 +1129,10 @@ function putMonster(
   mate.left = true;
 
   turn(state, { type: 'revive' });
-  // 印が残ると、そのあと倒れても「引き返した」と出てしまう
-  assert(mate.alive && mate.left === false, '起こされたら印が消える');
+  // 印が残ると、そのあと倒れても「引き返した」と出てしまう。
+  // 代入のあとなので、型を狭められないよう配列から取り直す
+  const after = state.actors.find((a) => a.id === 'p2');
+  assert(after?.alive === true && after.left !== true, '起こされたら印が消える');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
