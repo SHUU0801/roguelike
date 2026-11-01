@@ -2215,3 +2215,22 @@ button.wide.primary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 指に付いてくるアイテム。マスの外に出るので画面に対して固定で置く */
+.drag-ghost {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(43, 51, 64, 0.88);
+  border: 2px solid #e0c060;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(10, 11, 14, 0.6);
+  /* 少し持ち上がって見えるように。掴んでいることが分かる */
+  transform: scale(1.06);
+}
+
+/* 元の場所。指に付いてくる絵のほうが本体なので薄くする */
+.bag-piece.ghosted { opacity: 0.25; }

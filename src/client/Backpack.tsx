@@ -1,4 +1,5 @@
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { isUsable, itemDefOf, rotated, shapeSize } from '../shared/items';
 import { BAG_H, BAG_W, type GameState, type ItemInstance } from '../shared/types';
 import { TileIcon } from './Icon';
@@ -37,6 +38,20 @@ type Props = {
  *
  * 置ける場所は掴んでいる間だけ緑で示す。どこに入るか分からないまま総当たりさせない。
  */
+/**
+ * 装備の補正を「攻+4 防-1」の形にする。
+ *
+ * 文字列の中で組み立てたら `攻${a ?? 0 > 0 ? '+' : ''}` と書いてしまい、
+ * `?? (0 > 0)` と解釈されて「攻+-1」になった。外に出して素直に書く。
+ */
+function equipLabel(itemId: string): string {
+  const e = itemDefOf(itemId).equip;
+  if (!e) return '';
+  const part = (name: string, v: number | undefined) =>
+    v === undefined || v === 0 ? '' : `${name}${v > 0 ? '+' : ''}${v}`;
+  return [part('攻', e.atk), part('防', e.def)].filter(Boolean).join(' ');
+}
+
 export function Backpack({
   state,
   ownerId,
@@ -70,6 +85,8 @@ export function Backpack({
   }
 
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
+  /** 指そのものの位置。掴んでいる絵をここへ運ぶ */
+  const [ptr, setPtr] = useState<{ x: number; y: number } | null>(null);
 
   /** その向きでそこに置けるか */
   const fitsAt = (item: ItemInstance, at: { x: number; y: number }, r: number): boolean => {
@@ -145,6 +162,7 @@ export function Backpack({
       setDragging(true);
     }
     // 置ける場所の表示を更新するだけ。実際に動かすのは指を離したとき
+    setPtr({ x: e.clientX, y: e.clientY });
     const at = cellAt(e.clientX, e.clientY);
     if (at) setHover(at);
   };
@@ -154,6 +172,7 @@ export function Backpack({
     dragRef.current = null;
     setDragging(false);
     setHover(null);
+    setPtr(null);
     if (!drag) return;
 
     // 指を動かさずに離した＝タップ。持ち上げたままにして、置き先を押してもらう
@@ -237,7 +256,14 @@ export function Backpack({
     return (
       <span
         key={item.id}
-        className={`bag-piece${item.id === holding?.id ? ' held' : ''}`}
+        className={[
+          'bag-piece',
+          item.id === holding?.id ? 'held' : '',
+          // 指に付いてくる絵のほうが本体になるので、元の場所は薄くする
+          dragging && item.id === holding?.id ? 'ghosted' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         style={style}
       >
         <TileIcon id={def.sprite} size={32} />
@@ -279,6 +305,38 @@ export function Backpack({
         {pieces}
       </div>
 
+      {/*
+        指に付いてくる絵。
+        掴んだ場所に絵が残ったままだと、何を持っているのか分からない。
+        指のちょうど下に、本来の大きさ（マス数ぶん）で出す。
+
+        **body に直接描く（portal）。**
+        袋の枠は transform を持っているので、その中に position:fixed を置くと
+        画面ではなく枠が基準になる。実際に縦へ 380px ずれた。
+      */}
+      {dragging &&
+        holding &&
+        ptr &&
+        createPortal(
+          <span
+            className="drag-ghost"
+            style={(() => {
+            const grid = gridRef.current;
+            const unit = grid ? grid.getBoundingClientRect().width / BAG_W : 48;
+            const [w, h] = shapeSize(rotated(itemDefOf(holding.itemId).shape, rot));
+              return {
+                left: ptr.x - (unit * w) / 2,
+                top: ptr.y - (unit * h) / 2,
+                width: unit * w,
+                height: unit * h,
+              };
+            })()}
+          >
+            <TileIcon id={itemDefOf(holding.itemId).sprite} size={32} />
+          </span>,
+          document.body,
+        )}
+
       {carried.length === 0 && (
         <div className="inventory-empty">{mine ? '何も持っていない' : 'からっぽ'}</div>
       )}
@@ -295,14 +353,7 @@ export function Backpack({
           {isUsable(holding.itemId) ? (
             <button onClick={() => onUse(holding.id)}>使う</button>
           ) : (
-            <span className="equip-chip">
-              {itemDefOf(holding.itemId).equip?.atk
-                ? `攻${itemDefOf(holding.itemId).equip?.atk ?? 0 > 0 ? '+' : ''}${itemDefOf(holding.itemId).equip?.atk}`
-                : ''}
-              {itemDefOf(holding.itemId).equip?.def
-                ? ` 防${(itemDefOf(holding.itemId).equip?.def ?? 0) > 0 ? '+' : ''}${itemDefOf(holding.itemId).equip?.def}`
-                : ''}
-            </span>
+            <span className="equip-chip">{equipLabel(holding.itemId)}</span>
           )}
           <button onClick={() => onDrop(holding.id)}>置く</button>
         </div>
