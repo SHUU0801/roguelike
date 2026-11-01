@@ -2,6 +2,14 @@
 
 :root {
   color-scheme: dark;
+  /*
+   * 画面下のボタン列の高さ。
+   *
+   * 十字ボタンの位置と、持ち物／わざの一覧を浮かせる高さの両方が
+   * これを見る。勘で合わせるとどちらかがずれるので、1か所に置いて
+   * .actions 自身にもこの高さを強制する。
+   */
+  --actions-h: 112px;
 }
 
 * {
@@ -746,10 +754,33 @@ button.wide.primary {
 }
 
 /* 持ち物の1行。使う／置く を右に並べる */
+/*
+ * 持ち物とわざの一覧。
+ *
+ * **ボタン列の上に浮かせる。** 流れの中に置いていたら、
+ * 持ち物が4個を超えた時点で画面を押し広げ、ボタン列ごと画面の外に出た
+ * （.app は height:100dvh / overflow:hidden なので、あふれた分は消える）。
+ * 盤を隠すことになるが、袋の中を見ている間に盤が要るわけではない。
+ *
+ * 高さに上限を付けて中だけスクロールさせる。持ち物は最大6個なので、
+ * 上限に当たるのは実際に6個持ったときだけ。
+ */
 .inventory {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(480px, 100%);
+  bottom: calc(var(--actions-h) + env(safe-area-inset-bottom, 0px));
+  z-index: 15;
+  max-height: 52dvh;
+  overflow-y: auto;
+  /* 一覧の端まで来たとき、裏のページまでスクロールさせない */
+  overscroll-behavior: contain;
+
   grid-template-columns: 1fr;
   background: #171b21;
   border-top: 1px solid #2a2e35;
+  box-shadow: 0 -8px 20px rgba(10, 11, 14, 0.6);
   padding: 10px 12px;
 }
 
@@ -1188,9 +1219,14 @@ button.wide.primary {
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* 高さを決め打ちにする。一覧を浮かせる位置がこの高さを見ているので、
+     中身で伸び縮みすると一覧が重なったり浮いたりする */
+  grid-template-rows: 1fr 1fr;
+  height: var(--actions-h);
   gap: 6px;
   margin-left: auto;
   width: min(210px, 56%);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .actions button.skill {
