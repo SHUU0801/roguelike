@@ -104,6 +104,8 @@ export type Connection =
       chooseJob: (job: JobId) => void;
       /** レベルアップのカードを取る。ターンの行動ではないので intent ではない */
       takePerk: (perkId: PerkId) => void;
+      /** バックパックの並べ替え。これもターンの行動ではない */
+      moveItem: (instanceId: string, x: number, y: number, rot: number) => void;
     };
 
 export function useGame(): Connection {
@@ -178,6 +180,8 @@ export function useGame(): Connection {
       start: () => room.send('start'),
       chooseJob: (job: JobId) => room.send('job', job),
       takePerk: (perkId: PerkId) => room.send('perk', perkId),
+      moveItem: (instanceId: string, x: number, y: number, rot: number) =>
+        room.send('rearrange', { instanceId, x, y, rot }),
     };
   }
 
@@ -197,5 +201,6 @@ export function useGame(): Connection {
     start: () => room.send('start'),
     chooseJob: (job) => room.send('job', job),
     takePerk: (perkId) => room.send('perk', perkId),
+    moveItem: (instanceId, x, y, rot) => room.send('rearrange', { instanceId, x, y, rot }),
   };
 }

@@ -419,33 +419,26 @@ button.wide.primary {
 /*
  * 歩き。
  *
- * もとは slide-in（平行移動だけ）で、氷の上を滑っているように見えた。
- * 次に大きく1回跳ねさせたら、今度は**跳んでいる**ように見えた。
+ * ここは3回作り直している。
+ *   1回目 平行移動だけ      → 氷の上を滑って見える
+ *   2回目 大きく1回跳ねる    → 跳躍に見える
+ *   3回目 小さく2回上下する  → まだ跳ねて見える
+ *   4回目（いま）上下動なし  → 等速で滑り、足のコマだけが変わる
  *
- * 歩きに見えるのは「小さい上下動が2回」。
- * 人は1歩のあいだに重心が2回上下する（踏み出しと着地）ので、
- * 山が1つだとジャンプ、2つだと歩行になる。振れ幅も 16% → 5% に落とした。
- * つぶれ（scaleX）はやめた。横に潰れると着地の衝撃が出て、また跳躍に寄る。
+ * **動きで歩かせようとしない。歩いているのは絵のほう。**
+ * 16x16 の2コマが足の入れ替えを担うので、位置の変化は
+ * 「そのあいだに移動した」ことだけを伝えればいい。上下動を足すと、
+ * 絵の足と位置の上下が別々に動いて、必ずどこかで跳ねて見える。
  *
- * あわせてコマも1回送る（2コマしかないので、1歩＝1コマ）。
+ * linear なのも同じ理由。ease-out は終わりで減速するので、
+ * 止まるときに滑る（＝慣性がある）ように見える。
+ * 一歩ぶんきっちり進んで止まるほうが、マス目の移動には合う。
  */
 @keyframes walk {
-  0% {
+  from {
     transform: translate(calc(var(--dx, 0) * -100%), calc(var(--dy, 0) * -100%));
   }
-  25% {
-    transform: translate(calc(var(--dx, 0) * -70%), calc(var(--dy, 0) * -70%))
-      translateY(-5%) scaleY(1.03);
-  }
-  50% {
-    transform: translate(calc(var(--dx, 0) * -45%), calc(var(--dy, 0) * -45%))
-      translateY(1%) scaleY(0.98);
-  }
-  75% {
-    transform: translate(calc(var(--dx, 0) * -18%), calc(var(--dy, 0) * -18%))
-      translateY(-5%) scaleY(1.03);
-  }
-  100% {
+  to {
     transform: translate(0, 0);
   }
 }
@@ -463,8 +456,8 @@ button.wide.primary {
 .sprite.self.moved,
 .sprite.anim.self.moved {
   animation:
-    walk 0.2s ease-out,
-    idle-frames 0.2s steps(2, jump-none);
+    walk 0.32s linear,
+    idle-frames 0.32s steps(2, jump-none);
 }
 
 .sprite.lunge,
@@ -1407,4 +1400,89 @@ button.wide.primary {
   background-repeat: no-repeat;
   image-rendering: pixelated;
   vertical-align: -3px;
+}
+
+/* --- バックパック --- */
+
+.bag { display: flex; flex-direction: column; gap: 8px; }
+
+.bag-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #9aa4b2;
+  font-variant-numeric: tabular-nums;
+}
+
+.bag-hint { color: #e0c060; }
+
+/*
+ * マス目。アイテムの絵はマスの上に重ねて置く（同じグリッドの別レイヤー）。
+ * 1マスずつ切って描くと、剣が3つの断片に見えて形が読めない。
+ */
+.bag-grid {
+  display: grid;
+  gap: 3px;
+  /* 幅いっぱいに広げると 1マス 68px になり、4行目が一覧の高さ上限を越えて
+     切れた。袋ごと収まる大きさに抑える */
+  width: 100%;
+  max-width: 292px;
+  margin: 0 auto;
+}
+
+.bag-cell {
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  background: #11141a;
+  border: 1px solid #2a2e35;
+  border-radius: 3px;
+}
+
+.bag-cell.full { background: #1f242d; border-color: #39404a; }
+
+/* 置ける場所。持ち上げている間だけ出す。総当たりさせない */
+.bag-cell.drop-ok {
+  background: #1d3326;
+  border-color: #3f7d5a;
+}
+
+.bag-piece {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 3px;
+  pointer-events: none;
+  background: #2b3340;
+  border: 1px solid #4c586a;
+  border-radius: 4px;
+}
+
+.bag-piece.held {
+  border-color: #e0c060;
+  background: #3a3520;
+}
+
+.bag-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.bag-name { flex: 1; font-size: 13px; }
+
+.bag-actions button {
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #222730;
+  border: 1px solid #39404a;
+  border-radius: 6px;
 }

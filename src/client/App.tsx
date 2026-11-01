@@ -329,6 +329,7 @@ export function App() {
           setSkillsOpen(false);
           setInventoryOpen((v) => !v);
         }}
+        onMoveItem={conn.moveItem}
         skillsOpen={skillsOpen}
         onToggleSkills={() => {
           setInventoryOpen(false);

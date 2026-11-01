@@ -11,6 +11,7 @@ import {
   type ItemInstance,
   type Pos,
 } from '../shared/types';
+import { putIn } from './backpack';
 import { createFloor, scatterPositions, spawnPos } from './dungeon';
 import { pick, randInt } from './random';
 
@@ -38,8 +39,6 @@ const ITEM_POOL: ItemId[] = [
  * 配るものと職業がばらばらだと、戦士に爆弾が渡って役割がぼやける。
  */
 
-/** 持ち物の上限。スマホの画面に並ぶ数で決めている */
-export const MAX_INVENTORY = 6;
 
 /**
  * id の採番。v0 はサーバーが1プロセスなので、ただの連番で足りる。
@@ -74,7 +73,16 @@ export function startGame(state: GameState): void {
 
   for (const player of state.actors.filter((a) => a.kind === 'player')) {
     const itemId: ItemId = jobOf(player.job).startingItem;
-    state.items.push({ id: newId('i'), itemId, pos: null, ownerId: player.id });
+    const item: ItemInstance = {
+      id: newId('i'),
+      itemId,
+      pos: null,
+      ownerId: null,
+      at: null,
+      rot: 0,
+    };
+    state.items.push(item);
+    putIn(state, player.id, item);
   }
 
   pushLog(state, 'ダンジョンに入った');
@@ -228,6 +236,8 @@ function populateFloor(state: GameState): void {
         itemId: pick(ITEM_POOL) ?? 'potion',
         pos,
         ownerId: null,
+        at: null,
+        rot: 0,
       });
     }
   }
@@ -296,7 +306,14 @@ function seedFirstRoom(state: GameState): void {
   free.sort((a, b) => dist(a) - dist(b));
 
   // 近いところに薬草。歩いているうちに勝手に拾える
-  state.items.push({ id: newId('i'), itemId: 'potion', pos: free[0], ownerId: null });
+  state.items.push({
+    id: newId('i'),
+    itemId: 'potion',
+    pos: free[0],
+    ownerId: null,
+    at: null,
+    rot: 0,
+  });
 
   // 一番遠いところに一番弱い敵。倒せる成功体験を最初に置く
   if (free.length > 1) spawnMonster(state, 'bat', free[free.length - 1]);

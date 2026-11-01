@@ -16,6 +16,7 @@ import {
   removePlayer,
   startGame,
 } from './game';
+import { rearrange } from './backpack';
 import { takePerk } from './levels';
 import { resolveTurn } from './resolve';
 import { updateVision } from './vision';
@@ -76,6 +77,23 @@ export class GameRoom extends Room {
      * しかも全員がその人の選択を待つことになる（同期ターン制なので）。
      * 別のメッセージにしておけば、選んでいる間もゲームは進む。
      */
+    /*
+     * バックパックの並べ替え。**ターンの行動ではない。**
+     * 1マス動かすたびに1手使うのでは誰も詰め直さないし、
+     * 同期ターン制なので全員がその人の整理を待つことになる。
+     */
+    this.onMessage<{ instanceId?: unknown; x?: unknown; y?: unknown; rot?: unknown }>(
+      'rearrange',
+      (client, msg) => {
+        if (typeof msg?.instanceId !== 'string') return;
+        if (typeof msg.x !== 'number' || typeof msg.y !== 'number') return;
+        const rot = typeof msg.rot === 'number' ? msg.rot : 0;
+        if (rearrange(this.game, client.sessionId, msg.instanceId, { x: msg.x, y: msg.y }, rot)) {
+          this.publish();
+        }
+      },
+    );
+
     this.onMessage<unknown>('perk', (client, perkId) => {
       if (!isPerkId(perkId)) return;
       const actor = this.game.actors.find((a) => a.id === client.sessionId);

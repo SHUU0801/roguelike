@@ -15,7 +15,8 @@ import { isSkillId } from '../shared/skills';
 import { alertOnHit, monsterAct } from './ai';
 import { attack, damage, sneakAttack } from './combat';
 import { applyItem } from './effects';
-import { MAX_INVENTORY, descend, inventoryOf, pushLog } from './game';
+import { descend, pushLog } from './game';
+import { putIn, takeOut } from './backpack';
 import { tickEffects, useSkill } from './skills';
 import { updateVision } from './vision';
 
@@ -197,12 +198,10 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
         pushLog(state, '足元には何もない');
         return;
       }
-      if (inventoryOf(state, actor.id).length >= MAX_INVENTORY) {
-        pushLog(state, 'これ以上持てない');
+      if (!putIn(state, actor.id, item)) {
+        pushLog(state, '袋に空きがない');
         return;
       }
-      item.pos = null;
-      item.ownerId = actor.id;
       pushLog(state, `${itemDefOf(item.itemId).name}を拾った`);
       return;
     }
@@ -233,7 +232,7 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
         pushLog(state, 'ここには置けない');
         return;
       }
-      item.ownerId = null;
+      takeOut(item);
       item.pos = { ...actor.pos };
       pushLog(state, `${itemDefOf(item.itemId).name}を置いた`);
       return;
@@ -310,13 +309,10 @@ function autoPickUp(state: GameState, actor: Actor): void {
   const item = itemAt(state, actor.pos.x, actor.pos.y);
   if (!item) return;
 
-  if (inventoryOf(state, actor.id).length >= MAX_INVENTORY) {
-    pushLog(state, `${itemDefOf(item.itemId).name}があるが、持ちきれない`);
+  if (!putIn(state, actor.id, item)) {
+    pushLog(state, `${itemDefOf(item.itemId).name}があるが、袋に空きがない`);
     return;
   }
-
-  item.pos = null;
-  item.ownerId = actor.id;
   pushLog(state, `${itemDefOf(item.itemId).name}を拾った`);
 }
 
@@ -336,7 +332,7 @@ function cleanUpDead(state: GameState): void {
     if (carried.length === 0) continue;
 
     for (const item of carried) {
-      item.ownerId = null;
+      takeOut(item);
       item.pos = freeItemSpot(state, actor.pos);
     }
     pushLog(state, '持っていたものが床に散らばった');

@@ -53,6 +53,16 @@ export const FUEL_DANGER = 20;
 export const MAX_PLAYERS = 4;
 
 /**
+ * バックパックの大きさ。
+ *
+ * 5×4 = 20 マス。盾（2×2）が4マス、剣（縦3）が3マスなので、
+ * 「全部持つ」が成立しない大きさにしてある。
+ * 広げると判断が消え、狭めると拾う楽しみが消える。遊んで決めること。
+ */
+export const BAG_W = 5;
+export const BAG_H = 4;
+
+/**
  * 1ターンの制限時間。
  * これが無いと、放置した1人が全員を止めてマルチプレイが破綻する（ゴール定義 §2）。
  * 計測は「そのターンで最初の誰かが動いた瞬間」から始まる。
@@ -148,6 +158,13 @@ export type ItemInstance = {
   itemId: string; // 効果は shared/items.ts の表を引く
   pos: Pos | null; // 床にある → 座標 / 誰かが持っている → null
   ownerId: string | null;
+  /**
+   * バックパックの中の位置（左上のマス）。床にあるときは null。
+   * 配置はサーバーが持つ。クライアントで持つと、並べ替えで物が増やせてしまう。
+   */
+  at: Pos | null;
+  /** 向き。0 がそのまま、1 が90度回した形 */
+  rot: number;
 };
 
 export type Floor = {

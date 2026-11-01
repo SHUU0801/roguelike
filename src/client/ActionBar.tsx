@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Icon, TileIcon } from './Icon';
+import { Backpack } from './Backpack';
+import { Icon } from './Icon';
 import { itemDefOf } from '../shared/items';
 import { skillOf } from '../shared/skills';
 import type { GameState, Intent, ItemInstance } from '../shared/types';
@@ -19,6 +20,7 @@ type Props = {
   onToggleInventory: () => void;
   skillsOpen: boolean;
   onToggleSkills: () => void;
+  onMoveItem: (instanceId: string, x: number, y: number, rot: number) => void;
 };
 
 /**
@@ -40,13 +42,13 @@ export function ActionBar({
   onToggleInventory,
   skillsOpen,
   onToggleSkills,
+  onMoveItem,
 }: Props) {
   const players = state.actors.filter((a) => a.kind === 'player');
   const [tab, setTab] = useState<string>(myId);
   const viewing = players.some((p) => p.id === tab) ? tab : myId;
 
   const mine: ItemInstance[] = state.items.filter((i) => i.ownerId === myId);
-  const shown: ItemInstance[] = state.items.filter((i) => i.ownerId === viewing);
   const isMine = viewing === myId;
 
   const readyCount = state.descendReady.length;
@@ -83,36 +85,15 @@ export function ActionBar({
             </div>
           )}
 
-          {shown.length === 0 ? (
-            <div className="inventory-empty">
-              {isMine ? '何も持っていない' : 'この人は何も持っていない'}
-            </div>
-          ) : (
-            shown.map((item) => {
-              const def = itemDefOf(item.itemId);
-              return (
-                <div key={item.id} className="inventory-row">
-                  <TileIcon id={def.sprite} />
-                  <span className="iname">{def.name}</span>
-                  {isMine && playing && (
-                    <>
-                      <button
-                        onClick={() => onAction({ type: 'useItem', instanceId: item.id })}
-                      >
-                        使う
-                      </button>
-                      {/* 渡す唯一の手段。置いて、相手に拾ってもらう */}
-                      <button
-                        onClick={() => onAction({ type: 'drop', instanceId: item.id })}
-                      >
-                        置く
-                      </button>
-                    </>
-                  )}
-                </div>
-              );
-            })
-          )}
+          <Backpack
+            state={state}
+            ownerId={viewing}
+            mine={isMine}
+            playing={playing}
+            onUse={(id) => onAction({ type: 'useItem', instanceId: id })}
+            onDrop={(id) => onAction({ type: 'drop', instanceId: id })}
+            onMove={onMoveItem}
+          />
         </div>
       )}
 

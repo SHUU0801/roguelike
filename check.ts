@@ -7,6 +7,7 @@ import {
   startGame,
 } from './src/server/game';
 import { createFloor, spawnPos } from './src/server/dungeon';
+import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
 import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn } from './src/server/resolve';
 import { updateVision } from './src/server/vision';
@@ -14,6 +15,7 @@ import { JOBS, type JobId } from './src/shared/jobs';
 import { BASE_SKILL } from './src/shared/skills';
 import { OFFER_COUNT, PERKS, PERK_IDS, perkCount, perkOf } from './src/shared/perks';
 import {
+  BAG_H,
   DIR_DELTA,
   MAX_LEVEL,
   expToNext,
@@ -22,6 +24,7 @@ import {
   type Dir,
   type GameState,
   type Intent,
+  type ItemInstance,
   type Pos,
 } from './src/shared/types';
 
@@ -58,6 +61,30 @@ function fresh(): { state: GameState; me: Actor } {
 
 function turn(state: GameState, intent: Intent): void {
   resolveTurn(state, new Map<string, Intent>([['p1', intent]]));
+}
+
+/**
+ * 試験用のアイテムを1つ置く。
+ * 床に置くなら pos、誰かに持たせるなら owner を渡す。
+ * ItemInstance の項目が増えるたびに何箇所も直すのが面倒なのでまとめた。
+ */
+function putItem(
+  state: GameState,
+  id: string,
+  itemId: string,
+  where: { pos?: Pos; owner?: string },
+): ItemInstance {
+  const item: ItemInstance = {
+    id,
+    itemId,
+    pos: where.pos ?? null,
+    ownerId: null,
+    at: null,
+    rot: 0,
+  };
+  state.items.push(item);
+  if (where.owner) putIn(state, where.owner, item);
+  return item;
 }
 
 /**
@@ -151,7 +178,7 @@ function putMonster(
 {
   const { state, me } = fresh();
 
-  state.items.push({ id: 'it-potion', itemId: 'potion', pos: { ...me.pos }, ownerId: null });
+  putItem(state, 'it-potion', 'potion', { pos: { ...me.pos } });
   turn(state, { type: 'pickUp' });
   assert(
     inventoryOf(state, 'p1').some((i) => i.id === 'it-potion'),
@@ -169,7 +196,7 @@ function putMonster(
   const { state, me } = fresh();
   const atk0 = me.atk;
   const def0 = me.def;
-  state.items.push({ id: 'it-sword', itemId: 'sword', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-sword', 'sword', { owner: 'p1'  });
   turn(state, { type: 'useItem', instanceId: 'it-sword' });
   assert(
     me.atk === atk0 + 4 && me.def === def0 - 1,
@@ -183,7 +210,7 @@ function putMonster(
   const atk0 = me.atk;
   const def0 = me.def;
   const max0 = me.maxHp;
-  state.items.push({ id: 'it-shield', itemId: 'shield', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-shield', 'shield', { owner: 'p1'  });
   turn(state, { type: 'useItem', instanceId: 'it-shield' });
   assert(
     me.def === def0 + 3 && me.atk === atk0 - 1 && me.maxHp === max0 + 4,
@@ -265,7 +292,7 @@ function putMonster(
   mate.pos = { x: me.pos.x + 1, y: me.pos.y };
   const mateHp = mate.hp;
 
-  state.items.push({ id: 'it-bomb', itemId: 'bomb', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-bomb', 'bomb', { owner: 'p1'  });
   turn(state, { type: 'useItem', instanceId: 'it-bomb' });
   assert(mate.hp === mateHp, `爆弾は仲間に当たらない (HP ${mateHp} → ${mate.hp})`);
 }
@@ -275,7 +302,7 @@ function putMonster(
   const { state, me } = fresh();
   // 東と決め打ちすると、東が壁のダンジョンで落ちる
   const spot = freeNeighbour(state, me);
-  state.items.push({ id: 'it-auto', itemId: 'potion', pos: spot.pos, ownerId: null });
+  putItem(state, 'it-auto', 'potion', { pos: spot.pos });
   turn(state, { type: 'move', dir: spot.dir });
   assert(
     inventoryOf(state, 'p1').some((i) => i.id === 'it-auto'),
@@ -286,7 +313,7 @@ function putMonster(
 // --- 12. 倒れたプレイヤーの持ち物が床に落ちる ---
 {
   const { state, me } = fresh();
-  state.items.push({ id: 'it-drop', itemId: 'sword', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-drop', 'sword', { owner: 'p1'  });
   me.hp = 1;
   putMonster(state, 'bully2', 'goblin', { x: me.pos.x + 1, y: me.pos.y }, { atk: 99 });
   turn(state, { type: 'wait' });
@@ -326,7 +353,7 @@ function putMonster(
 {
   const { state, me } = fresh();
   me.fuel = 10;
-  state.items.push({ id: 'it-torch', itemId: 'torch', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-torch', 'torch', { owner: 'p1'  });
   turn(state, { type: 'useItem', instanceId: 'it-torch' });
   assert(me.fuel > 50, `松明をつぎ足せる (10 → ${me.fuel})`);
 }
@@ -357,7 +384,7 @@ function putMonster(
   const { state, me } = fresh();
   const idx = state.floor.tiles.indexOf('stairs');
   const stairs = { x: idx % state.floor.width, y: Math.floor(idx / state.floor.width) };
-  state.items.push({ id: 'it-scroll', itemId: 'scroll', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-scroll', 'scroll', { owner: 'p1'  });
   turn(state, { type: 'useItem', instanceId: 'it-scroll' });
   const dist = Math.abs(me.pos.x - stairs.x) + Math.abs(me.pos.y - stairs.y);
   assert(dist <= 1, `巻物で階段のそばへ飛ぶ (階段からの距離 ${dist})`);
@@ -386,7 +413,7 @@ function putMonster(
   const mate = state.actors.find((a) => a.id === 'p2');
   if (!mate) throw new Error('no mate');
 
-  state.items.push({ id: 'it-give', itemId: 'potion', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-give', 'potion', { owner: 'p1'  });
   turn(state, { type: 'drop', instanceId: 'it-give' });
 
   const onFloor = state.items.find((i) => i.id === 'it-give');
@@ -410,8 +437,8 @@ function putMonster(
 // --- 21. 同じマスに2つ置けない ---
 {
   const { state } = fresh();
-  state.items.push({ id: 'it-a', itemId: 'potion', pos: null, ownerId: 'p1' });
-  state.items.push({ id: 'it-b', itemId: 'bomb', pos: null, ownerId: 'p1' });
+  putItem(state, 'it-a', 'potion', { owner: 'p1'  });
+  putItem(state, 'it-b', 'bomb', { owner: 'p1'  });
   turn(state, { type: 'drop', instanceId: 'it-a' });
   turn(state, { type: 'drop', instanceId: 'it-b' });
   assert(
@@ -842,6 +869,116 @@ function putMonster(
   });
   turn(state, { type: 'skill', skillId: 'smite' });
   assert(foe.hp < 99, `覚えたわざが使える (${99 - foe.hp} ダメージ）`);
+}
+
+// --- 45. 袋は形で詰まる。数ではない ---
+{
+  const { state } = fresh();
+  state.items = [];
+  // 盾は 2x2。5x4 = 20 マスなので 5 個でちょうど埋まり、6 個目は入らない
+  let placed = 0;
+  for (let i = 0; i < 8; i++) {
+    const item: ItemInstance = {
+      id: `sh${i}`,
+      itemId: 'shield',
+      pos: null,
+      ownerId: null,
+      at: null,
+      rot: 0,
+    };
+    state.items.push(item);
+    if (putIn(state, 'p1', item)) placed++;
+  }
+  /*
+   * 4個。5マス幅に 2x2 を並べると 2個で 4マス使い、右に1列あまる。
+   * あまった 1 列（4マス）には 2x2 が入らない。
+   * **これが形で詰める仕組みの肝**で、数の制限では起きない。
+   * 「20マスあるのに盾は4つまで」が成立する。
+   */
+  assert(placed === 4, `2x2 の盾は 4 個で頭打ち (${placed} 個入った)`);
+  assert(
+    usedCells(state, 'p1') === 16,
+    `16 マス埋まり、右の1列が余る (${usedCells(state, 'p1')})`,
+  );
+
+  // 余った1列には細いものが入る
+  const thin: ItemInstance = {
+    id: 'thin', itemId: 'potion', pos: null, ownerId: null, at: null, rot: 0,
+  };
+  state.items.push(thin);
+  assert(putIn(state, 'p1', thin), '余った列には 1x1 が入る');
+}
+
+// --- 46. 入らない向きのものは回して入れる ---
+{
+  const { state } = fresh();
+  state.items = [];
+  let placed = 0;
+  for (let i = 0; i < 8; i++) {
+    const item: ItemInstance = {
+      id: `sw${i}`,
+      itemId: 'sword',
+      pos: null,
+      ownerId: null,
+      at: null,
+      rot: 0,
+    };
+    state.items.push(item);
+    if (putIn(state, 'p1', item)) placed++;
+  }
+  const sideways = state.items.filter((i) => i.ownerId === 'p1' && i.rot === 1).length;
+  assert(placed >= 5, `縦3の剣が ${placed} 本入った`);
+  assert(sideways > 0, `そのままで入らない分は回して入れる (${sideways} 本が横向き)`);
+}
+
+// --- 47. 重ねて置けない ---
+{
+  const { state } = fresh();
+  state.items = [];
+  const a = putItem(state, 'ov-a', 'shield', { owner: 'p1' });
+  const b = putItem(state, 'ov-b', 'potion', { owner: 'p1' });
+  assert(a.at !== null && b.at !== null, '2つとも袋に入った（前提）');
+  const ok = rearrangeItem(state, 'p1', 'ov-b', { x: a.at?.x ?? 0, y: a.at?.y ?? 0 }, 0);
+  assert(!ok, '埋まっているマスには置けない');
+}
+
+// --- 48. 袋からはみ出す場所には置けない ---
+{
+  const { state } = fresh();
+  state.items = [];
+  putItem(state, 'edge', 'sword', { owner: 'p1' });
+  const ok = rearrangeItem(state, 'p1', 'edge', { x: 0, y: BAG_H - 1 }, 0);
+  assert(!ok, `縦3のものを下端に置こうとしても入らない (BAG_H=${BAG_H})`);
+}
+
+// --- 49. 袋が満杯なら拾わない ---
+{
+  const { state, me } = fresh();
+  state.items = state.items.filter((i) => i.pos !== null);
+  // 盾4個（16マス）＋ 薬草4個（余った1列）で 20 マスちょうど埋める
+  for (let i = 0; i < 4; i++) {
+    for (const itemId of ['shield', 'potion'] as const) {
+      const item: ItemInstance = {
+        id: `fill-${itemId}-${i}`,
+        itemId,
+        pos: null,
+        ownerId: null,
+        at: null,
+        rot: 0,
+      };
+      state.items.push(item);
+      putIn(state, 'p1', item);
+    }
+  }
+  assert(usedCells(state, 'p1') === 20, `満杯にした (${usedCells(state, 'p1')}/20)`);
+  const spot = freeNeighbour(state, me);
+  putItem(state, 'nope', 'potion', { pos: spot.pos });
+  turn(state, { type: 'move', dir: spot.dir });
+  const left = state.items.find((i) => i.id === 'nope');
+  assert(
+    left !== undefined && left.ownerId === null,
+    '満杯のときは乗っても拾わず、床に残る',
+  );
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
