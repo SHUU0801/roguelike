@@ -1710,3 +1710,27 @@ button.wide.primary {
 
 .skill-row .iname { display: flex; flex-direction: column; gap: 1px; flex: 1; }
 .sdesc { font-size: 11px; color: #9aa4b2; }
+
+/* --- 遠いマスへのタップ移動 --- */
+
+/*
+ * 見たことがある床は、隣でなくても押せる。
+ * 隣（.movable）ほど強く出さない。隣は「1手で届く」で意味が違うため。
+ */
+.cell.reachable { cursor: pointer; }
+.cell.reachable:active { filter: brightness(1.35); }
+
+/* 歩いている途中の道。目で追えるようにする */
+.cell.on-path::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20%;
+  height: 20%;
+  margin: -10% 0 0 -10%;
+  border-radius: 50%;
+  background: #e0c060;
+  opacity: 0.55;
+  pointer-events: none;
+}

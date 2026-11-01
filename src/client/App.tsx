@@ -8,6 +8,7 @@ import { LevelUp } from './LevelUp';
 import { Lobby } from './Lobby';
 import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
+import { dirBetween, findPath, shouldStop } from './travel';
 import { goToDungeon, useGame } from './useGame';
 import { bringHome, markCleared, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
@@ -22,7 +23,14 @@ import {
   tileAt,
   type Dir,
   type Intent,
+  type Pos,
 } from '../shared/types';
+
+/**
+ * 自動で歩くときの1歩の間隔。歩きのアニメ（0.32秒）より少し短く。
+ * 同じにすると間延びし、短すぎると瞬間移動に見える。
+ */
+const STEP_MS = 220;
 
 /** 締め切りまでの残り秒。待っていないときは null */
 function useSecondsLeft(deadlineAt: number | null): number | null {
@@ -48,6 +56,24 @@ export function App() {
   const [perkSnoozed, setPerkSnoozed] = useState(0);
   /** ホームで持ち込んだもの。決着したときに倉庫から引くのに使う */
   const broughtRef = useRef<ItemId[]>([]);
+
+  /*
+   * 遠いマスを押したときの道のり。
+   *
+   * 1ターンに1歩ずつ送る。残りを ref ではなく state に持つのは、
+   * 道のりを盤に描いて目で追えるようにするため。
+   * 止める条件は travel.ts の shouldStop にまとめてある。
+   */
+  const [path, setPath] = useState<Pos[]>([]);
+  const hpRef = useRef(0);
+  /**
+   * 最後に1歩送ったターン。
+   *
+   * これが無いと、道を入れた瞬間（まだサーバーが動いていない）に
+   * 次の1歩を判定してしまい、「道から外れた」と誤判定して1歩で止まる。
+   * 実際そうなっていた。**ターンが進んでから次を送る。**
+   */
+  const steppedAtRef = useRef(-1);
 
   /*
    * 画面に渡す関数は使い回す。毎回作り直すと、受け取った側の useEffect が
@@ -87,6 +113,60 @@ export function App() {
     else if (turnEffects.selfHurt) sfx.hurt();
     else if (turnEffects.anyHit) sfx.hit();
   }, [turnEffects]);
+
+  /*
+   * 自動で1歩進める。
+   *
+   * ターンが進むたびに呼ばれる。危ないと思ったら即やめる
+   * （自動で歩いている間に殴られるのが、この操作で一番腹が立つところ）。
+   */
+  const turnNow = conn.status === 'open' ? conn.state.turn : -1;
+  useEffect(() => {
+    if (conn.status !== 'open') return;
+    if (path.length === 0) return;
+    // まだターンが進んでいない。進むまで次の1歩は送らない
+    if (turnNow === steppedAtRef.current) return;
+    if (conn.state.phase !== 'playing') {
+      setPath([]);
+      return;
+    }
+    if (shouldStop(conn.state, conn.myId, hpRef.current)) {
+      setPath([]);
+      return;
+    }
+
+    const me = conn.state.actors.find((a) => a.id === conn.myId);
+    if (!me) return;
+    hpRef.current = me.hp;
+
+    // すでに着いていたら終わり
+    const next = path[0];
+    if (me.pos.x === next.x && me.pos.y === next.y) {
+      setPath(path.slice(1));
+      return;
+    }
+    const dir = dirBetween(me.pos, next);
+    if (!dir) {
+      // 道から外れた（押し出されたなど）。引き直さずにやめる
+      setPath([]);
+      return;
+    }
+    /*
+     * 少し待ってから送る。
+     *
+     * 1人で遊んでいるとターンが即座に解決するので、待たずに送ると
+     * 5マスが 0.2 秒で終わり、歩きのアニメ（0.32秒）が追いつかない。
+     * 瞬間移動しているように見えるうえ、道のりの印も見えない。
+     * 歩いて見える速さに合わせる。
+     */
+    steppedAtRef.current = turnNow;
+    const timer = setTimeout(() => {
+      conn.send({ type: 'move', dir });
+      setPath((now) => now.slice(1));
+    }, STEP_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turnNow, path.length]);
 
   // 決着の音は1回だけ
   const phase = conn.status === 'open' ? conn.state.phase : null;
@@ -234,6 +314,8 @@ export function App() {
   const playing = state.phase === 'playing' && me?.alive === true;
 
   const act = (intent: Intent) => {
+    // 手で何かした時点で、自動で歩くのはやめる
+    setPath([]);
     send(intent);
     if (intent.type === 'useItem') setInventoryOpen(false);
     if (intent.type === 'skill') setSkillsOpen(false);
@@ -348,6 +430,19 @@ export function App() {
         myId={myId}
         turnEffects={turnEffects}
         onMove={(dir) => act({ type: 'move', dir })}
+        path={path}
+        onTravel={(to) => {
+          if (!me) return;
+          const route = findPath(state, me.pos, to);
+          if (!route) return;
+          hpRef.current = me.hp;
+          steppedAtRef.current = state.turn;
+          // 1歩目はすぐ送る。押してから次のターンまで何も起きないと、押せていないように見える
+          const dir = dirBetween(me.pos, route[0]);
+          if (!dir) return;
+          send({ type: 'move', dir });
+          setPath(route.slice(1));
+        }}
       />
 
       {/* 殴られた合図。key にターンを入れて、連続で殴られても毎回光らせる */}

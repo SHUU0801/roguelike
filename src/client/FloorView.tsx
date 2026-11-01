@@ -82,6 +82,10 @@ type Props = {
   myId: string;
   turnEffects: TurnEffects;
   onMove: (dir: Dir) => void;
+  /** 遠いマスを押したとき。そこまで歩く（travel.ts） */
+  onTravel: (to: { x: number; y: number }) => void;
+  /** 歩いている途中の道。目で追えるように印を出す */
+  path: readonly { x: number; y: number }[];
 };
 
 /**
@@ -95,7 +99,7 @@ type Props = {
  *   見たことがある     … 地形だけ（暗く）
  *   見たことがない     … 真っ黒
  */
-export function FloorView({ state, myId, turnEffects, onMove }: Props) {
+export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: Props) {
   const { floor } = state;
   const sprites = useSprites();
   // 地形の絵はダンジョンごとに違う。どこへ潜っても同じ絵だと、別の場所に来た気がしない
@@ -119,6 +123,14 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
 
       const dir = me ? dirTo(me.pos, { x, y }) : null;
       const movable = dir !== null && tile !== 'wall' && known;
+      /*
+       * 隣でなくても、見たことがある床なら押せる。
+       *
+       * 隣しか押せないと、部屋の端まで行くのに十数回タップすることになる。
+       * タッチで遊ばせるローグライクの定石（08_参考にしたもの.md）。
+       */
+      const reachable = !movable && known && tile !== 'wall' && me !== undefined;
+      const onPath = path.some((p) => p.x === x && p.y === y);
 
       // 枠の色で見分ける。黄=自分 / 青=仲間 / 赤=敵。
       // 「赤いマスは叩ける」が色だけで伝わるので、説明文が要らない
@@ -164,6 +176,8 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
             movable ? "movable" : "",
             // 何も乗っていない行き先には点を出す。「ここを押せば歩く」が1秒で分かる
             movable && !topSprite ? "vacant" : "",
+            reachable ? 'reachable' : '',
+            onPath ? 'on-path' : '',
             mark,
           ]
             .filter(Boolean)
@@ -175,7 +189,13 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
                 )
               : undefined
           }
-          onClick={movable && dir ? () => onMove(dir) : undefined}
+          onClick={
+            movable && dir
+              ? () => onMove(dir)
+              : reachable
+                ? () => onTravel({ x, y })
+                : undefined
+          }
         >
           {/* 倒れたものの残像。消えるアニメーションの間だけ出る */}
           {sprites && ghost && (
