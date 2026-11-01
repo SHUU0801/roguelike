@@ -2587,3 +2587,13 @@ button.wide.danger {
 .cell.stairs {
   transform: translateZ(-6px);
 }
+
+/* --- three.js の盤（試作。?v=3d） --- */
+.board3d {
+  flex: 1;
+  min-height: 0;
+  /* canvas は中身の大きさを持たないので、親から高さをもらう */
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+}

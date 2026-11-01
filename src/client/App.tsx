@@ -3,6 +3,7 @@ import { ActionBar } from './ActionBar';
 import { DPad } from './DPad';
 import { FloorView } from './FloorView';
 import { Icon } from './Icon';
+import { Board3D } from './Board3D';
 import { GameMenu } from './GameMenu';
 import { TutorialGuide } from './Tutorial';
 import { HowTo } from './HowTo';
@@ -58,6 +59,12 @@ export function App() {
   const [mapOpen, setMapOpen] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  /*
+   * 盤の描き方。?v=3d で three.js 版に切り替える。
+   * 2D と見比べて決めるための仮の分岐。決めたらこの旗ごと消す。
+   */
+  const board3d = new URLSearchParams(window.location.search).get('v') === '3d';
   /** 「あとで」で閉じたレベルアップ画面。溜まった回数が増えたらまた出す */
   const [perkSnoozed, setPerkSnoozed] = useState(0);
   /** ホームで持ち込んだもの。決着したときに倉庫から引くのに使う */
@@ -351,6 +358,20 @@ export function App() {
     if (intent.type === 'skill') setSkillsOpen(false);
   };
 
+  /** 遠いマスを押したとき。そこまでの道を引いて、1歩目をすぐ送る */
+  const travelTo = (to: Pos) => {
+    if (!me) return;
+    const route = findPath(state, me.pos, to);
+    if (!route) return;
+    hpRef.current = me.hp;
+    steppedAtRef.current = state.turn;
+    // 1歩目はすぐ送る。押してから次のターンまで何も起きないと、押せていないように見える
+    const dir = dirBetween(me.pos, route[0]);
+    if (!dir) return;
+    send({ type: 'move', dir });
+    setPath(route.slice(1));
+  };
+
   return (
     <div className="app">
       <header className="status">
@@ -474,25 +495,29 @@ export function App() {
         </div>
       )}
 
+      {/*
+        盤の描き方を URL で選べるようにしてある（?v=3d）。
+        見比べながら決めるため。片方に決めたら、この分岐ごと消す。
+      */}
+      {board3d ? (
+        <Board3D
+          state={state}
+          myId={myId}
+          turnEffects={turnEffects}
+          onMove={(dir) => act({ type: 'move', dir })}
+          path={path}
+          onTravel={travelTo}
+        />
+      ) : (
       <FloorView
         state={state}
         myId={myId}
         turnEffects={turnEffects}
         onMove={(dir) => act({ type: 'move', dir })}
         path={path}
-        onTravel={(to) => {
-          if (!me) return;
-          const route = findPath(state, me.pos, to);
-          if (!route) return;
-          hpRef.current = me.hp;
-          steppedAtRef.current = state.turn;
-          // 1歩目はすぐ送る。押してから次のターンまで何も起きないと、押せていないように見える
-          const dir = dirBetween(me.pos, route[0]);
-          if (!dir) return;
-          send({ type: 'move', dir });
-          setPath(route.slice(1));
-        }}
+        onTravel={travelTo}
       />
+      )}
 
       {/* 殴られた合図。key にターンを入れて、連続で殴られても毎回光らせる */}
       {turnEffects.selfHurt && <div key={state.turn} className="hurt-flash" />}
