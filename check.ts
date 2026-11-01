@@ -66,6 +66,19 @@ function turn(state: GameState, intent: Intent): void {
 }
 
 /**
+ * 床に落ちているものを全部どける。
+ *
+ * ダンジョンは毎回ランダムなので、**自分の足元にたまたま物が湧く**ことがある。
+ * そうなると itemAt が先に見つけたほうを返し、
+ * 「置く」は「ここには置けない」で弾かれ、「拾う」は別の物を拾う。
+ * 10回に1回落ちる試験の原因がこれだった。
+ * 床の物を自分で置く試験では、先にどけておく。
+ */
+function clearFloor(state: GameState): void {
+  state.items = state.items.filter((i) => i.pos === null);
+}
+
+/**
  * 試験用のアイテムを1つ置く。
  * 床に置くなら pos、誰かに持たせるなら owner を渡す。
  * ItemInstance の項目が増えるたびに何箇所も直すのが面倒なのでまとめた。
@@ -181,6 +194,7 @@ function putMonster(
 {
   const { state, me } = fresh();
 
+  clearFloor(state);
   putItem(state, 'it-potion', 'potion', { pos: { ...me.pos } });
   turn(state, { type: 'pickUp' });
   assert(
@@ -326,6 +340,7 @@ function putMonster(
 // --- 11. 乗ったら自動で拾う ---
 {
   const { state, me } = fresh();
+  clearFloor(state);
   // 東と決め打ちすると、東が壁のダンジョンで落ちる
   const spot = freeNeighbour(state, me);
   putItem(state, 'it-auto', 'potion', { pos: spot.pos });
@@ -439,6 +454,7 @@ function putMonster(
   const mate = state.actors.find((a) => a.id === 'p2');
   if (!mate) throw new Error('no mate');
 
+  clearFloor(state);
   putItem(state, 'it-give', 'potion', { owner: 'p1'  });
   turn(state, { type: 'drop', instanceId: 'it-give' });
 
@@ -463,6 +479,7 @@ function putMonster(
 // --- 21. 同じマスに2つ置けない ---
 {
   const { state } = fresh();
+  clearFloor(state);
   putItem(state, 'it-a', 'potion', { owner: 'p1'  });
   putItem(state, 'it-b', 'bomb', { owner: 'p1'  });
   turn(state, { type: 'drop', instanceId: 'it-a' });
@@ -983,7 +1000,7 @@ function putMonster(
 // --- 49. 袋が満杯なら拾わない ---
 {
   const { state, me } = fresh();
-  state.items = state.items.filter((i) => i.pos !== null);
+  clearFloor(state);
   // 盾4個（16マス）＋ 薬草4個（余った1列）で 20 マスちょうど埋める
   for (let i = 0; i < 4; i++) {
     for (const itemId of ['shield', 'potion'] as const) {
