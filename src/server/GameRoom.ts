@@ -6,6 +6,7 @@ import {
   type GameState,
   type Intent,
 } from '../shared/types';
+import { isDungeonId, type DungeonId } from '../shared/dungeons';
 import { isJobId } from '../shared/jobs';
 import { isPerkId } from '../shared/perks';
 import {
@@ -14,6 +15,7 @@ import {
   createInitialGame,
   pushLog,
   removePlayer,
+  setLoadout,
   startGame,
 } from './game';
 import { rearrange } from './backpack';
@@ -42,7 +44,15 @@ export class GameRoom extends Room {
   private away = new Set<string>();
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
 
-  onCreate(): void {
+  /**
+   * 部屋を作るときに、どのダンジョンへ潜るかが決まる。
+   * 途中から入ってきた人は選べない（行き先が変わると、もう入っている人が困る）。
+   */
+  onCreate(options?: { dungeon?: unknown }): void {
+    if (isDungeonId(options?.dungeon)) {
+      this.game = createInitialGame(options.dungeon as DungeonId);
+    }
+
     this.onMessage<Intent>('intent', (client, intent) => {
       if (this.game.phase !== 'playing') return;
       if (!this.canAct(client.sessionId)) return;
@@ -53,6 +63,21 @@ export class GameRoom extends Room {
       // ターンが揃わなかったときも「誰を待っているか」は配る。
       // これが無いと、先に動いた人の画面が無反応に見える。
       if (!this.tryResolveTurn()) this.publish();
+    });
+
+    /*
+     * 持ち込み。ホームの倉庫から選んだものを、始めるときに袋へ入れる。
+     *
+     * **クライアントの自己申告を信じている。** 倉庫はブラウザの localStorage に
+     * あり、サーバーは誰が何を持ち帰ったかを覚えていない（保存先が無いので）。
+     * 友達と遊ぶ範囲では困らないが、知らない人と遊ぶなら作り直しが要る。
+     * 直すときはここ1か所（07_ホームと周回.md §5）。
+     */
+    this.onMessage<unknown>('loadout', (client, ids) => {
+      if (this.game.phase !== 'lobby') return;
+      if (!Array.isArray(ids)) return;
+      setLoadout(this.game, client.sessionId, ids.filter((v) => typeof v === 'string'));
+      this.publish();
     });
 
     this.onMessage('start', () => {

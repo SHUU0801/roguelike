@@ -1,8 +1,11 @@
 import { ITEMS, type ItemId } from '../shared/items';
+import { dungeonOf, type DungeonId } from '../shared/dungeons';
 import { JOB_IDS, jobOf, type JobId } from '../shared/jobs';
 import { BASE_SKILL } from '../shared/skills';
 import { SPECIES, type SpeciesId } from '../shared/monsters';
 import {
+  BAG_H,
+  BAG_W,
   FUEL_START,
   MAX_DEPTH,
   actorAt,
@@ -15,21 +18,11 @@ import { putIn } from './backpack';
 import { createFloor, scatterPositions, spawnPos } from './dungeon';
 import { pick, randInt } from './random';
 
-/** フロアに出すモンスターの種類。深さに関係なく同じ顔ぶれ（v0 の範囲） */
-const MONSTER_POOL: SpeciesId[] = ['goblin', 'bat', 'slime'];
-
-/**
- * アイテムの出現。配列に重複して入れることで重み付けにしている。
- * 均等だと剣と盾が出すぎて、そのほとんどが無価値になる。
+/*
+ * 出る敵とアイテムはダンジョンごとに違う（shared/dungeons.ts）。
+ * 同じ顔ぶれだと、どこへ潜っても同じ戦い方になる。
+ * 重み付けは配列に重複して入れることで表している。
  */
-const ITEM_POOL: ItemId[] = [
-  'potion', 'potion', 'potion', 'potion',
-  'torch', 'torch', 'torch',
-  'bomb', 'bomb',
-  'sword', 'sword',
-  'shield', 'shield',
-  'scroll',
-];
 
 /*
  * 開始アイテムは職業ごとに決まる（shared/jobs.ts の startingItem）。
@@ -49,9 +42,10 @@ function newId(prefix: string): string {
   return `${prefix}${nextId++}`;
 }
 
-export function createInitialGame(): GameState {
+export function createInitialGame(dungeon: DungeonId = 'ruin'): GameState {
   const state: GameState = {
     phase: 'lobby',
+    dungeon,
     turn: 0,
     floor: createFloor(1),
     actors: [],
@@ -66,23 +60,45 @@ export function createInitialGame(): GameState {
   return state;
 }
 
+/**
+ * ホームで選んだ持ち込みを覚えておく。実際に袋へ入れるのは startGame。
+ * ロビーの間だけ受け付ける。
+ */
+const loadouts = new Map<string, ItemId[]>();
+
+export function setLoadout(state: GameState, id: string, itemIds: string[]): void {
+  if (state.phase !== 'lobby') return;
+  const valid = itemIds.filter((v): v is ItemId => v in ITEMS).slice(0, BAG_W * BAG_H);
+  loadouts.set(id, valid);
+
+  const actor = state.actors.find((a) => a.id === id);
+  if (actor) pushLog(state, `${actor.slot}番が ${valid.length} 個 持ち込む`);
+}
+
 /** ロビーから探索を始める。ここで開始アイテムを配る */
 export function startGame(state: GameState): void {
   if (state.phase !== 'lobby') return;
   state.phase = 'playing';
 
   for (const player of state.actors.filter((a) => a.kind === 'player')) {
-    const itemId: ItemId = jobOf(player.job).startingItem;
-    const item: ItemInstance = {
-      id: newId('i'),
-      itemId,
-      pos: null,
-      ownerId: null,
-      at: null,
-      rot: 0,
-    };
-    state.items.push(item);
-    putIn(state, player.id, item);
+    // 職業の基本装備 + ホームから持ち込んだもの。
+    // 入らなかったぶんは黙って捨てる（袋の大きさが上限）
+    const bring: ItemId[] = [jobOf(player.job).startingItem, ...(loadouts.get(player.id) ?? [])];
+    for (const itemId of bring) {
+      const item: ItemInstance = {
+        id: newId('i'),
+        itemId,
+        pos: null,
+        ownerId: null,
+        at: null,
+        rot: 0,
+      };
+      state.items.push(item);
+      if (!putIn(state, player.id, item)) {
+        state.items = state.items.filter((i) => i.id !== item.id);
+      }
+    }
+    loadouts.delete(player.id);
   }
 
   pushLog(state, 'ダンジョンに入った');
@@ -167,9 +183,9 @@ export function removePlayer(state: GameState, id: string): void {
 export function descend(state: GameState): void {
   const spent = state.turn - state.floorStartedAt;
 
-  if (state.floor.depth >= MAX_DEPTH) {
+  if (state.floor.depth >= dungeonOf(state.dungeon).depth) {
     state.phase = 'won';
-    pushLog(state, 'ダンジョンを踏破した！');
+    pushLog(state, `${dungeonOf(state.dungeon).name}を踏破した！`);
     return;
   }
 
@@ -220,7 +236,9 @@ function freeSpawn(state: GameState): Pos {
 function populateFloor(state: GameState): void {
   const { floor } = state;
 
-  const monsterCount = randInt(3, 5) + floor.depth;
+  const def = dungeonOf(state.dungeon);
+  const [lo, hi] = def.monsterBase;
+  const monsterCount = randInt(lo, hi) + floor.depth;
   const itemCount = randInt(2, 4);
 
   const spots = scatterPositions(floor, monsterCount + itemCount);
@@ -229,11 +247,11 @@ function populateFloor(state: GameState): void {
     const pos = spots[i];
 
     if (i < monsterCount) {
-      spawnMonster(state, pick(MONSTER_POOL) ?? 'goblin', pos);
+      spawnMonster(state, pick(def.monsters) ?? 'goblin', pos);
     } else {
       state.items.push({
         id: newId('i'),
-        itemId: pick(ITEM_POOL) ?? 'potion',
+        itemId: pick(def.items) ?? 'potion',
         pos,
         ownerId: null,
         at: null,

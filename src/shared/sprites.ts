@@ -16,7 +16,7 @@ export const SHEET = {
   url: '/sprites/tiles.png',
   tile: 16,
   cols: 9,
-  rows: 3,
+  rows: 4,
 } as const;
 
 export type SpriteId =
@@ -37,7 +37,12 @@ export type SpriteId =
   | 'warrior'
   | 'rogue'
   | 'mage'
-  | 'cleric';
+  | 'cleric'
+  // ダンジョンごとの地形
+  | 'floor_cave'
+  | 'wall_cave'
+  | 'floor_ice'
+  | 'wall_ice';
 
 /**
  * シート上の通し番号。左上から右へ、折り返して下へ。
@@ -63,6 +68,11 @@ export const SPRITE_INDEX: Record<SpriteId, number> = {
   rogue: 20,
   mage: 22,
   cleric: 24,
+  // 4行目
+  floor_cave: 27,
+  wall_cave: 28,
+  floor_ice: 29,
+  wall_ice: 30,
 };
 
 /** 2コマのアニメーションを持つもの。2コマ目は index + 1 */

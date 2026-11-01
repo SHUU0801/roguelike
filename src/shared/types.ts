@@ -3,6 +3,7 @@
  * 「同じ言語・同じ型をサーバーとクライアントで使い回す」のがこの構成の狙い。
  */
 
+import type { DungeonId } from './dungeons';
 import type { JobId } from './jobs';
 import type { PerkId } from './perks';
 import type { EffectId, SkillId } from './skills';
@@ -30,7 +31,10 @@ export const DIR_DELTA: Record<Dir, Pos> = {
   w: { x: -1, y: 0 },
 };
 
-/** v0 のダンジョンの深さ。ここまで降りればクリア */
+/**
+ * 既定のダンジョンの深さ。実際の深さはダンジョンごとに違う
+ * （shared/dungeons.ts の depth）。ここは表示の保険にだけ残してある。
+ */
 export const MAX_DEPTH = 5;
 
 /**
@@ -185,6 +189,11 @@ export type Floor = {
 export type GameState = {
   /** lobby = 仲間を待っている状態。「はじめる」で playing になる */
   phase: 'lobby' | 'playing' | 'won' | 'lost';
+  /**
+   * どのダンジョンに潜っているか。部屋を作った人が選ぶ。
+   * 地形の見た目・深さ・出る敵がこれで変わる（shared/dungeons.ts）。
+   */
+  dungeon: DungeonId;
   turn: number;
   floor: Floor;
   actors: Actor[];

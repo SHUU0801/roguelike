@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { itemDefOf } from '../shared/items';
+import { dungeonOf } from '../shared/dungeons';
 import { jobOf } from '../shared/jobs';
 import { speciesOf } from '../shared/monsters';
 import { ANIMATED, SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../shared/sprites';
@@ -97,6 +98,8 @@ type Props = {
 export function FloorView({ state, myId, turnEffects, onMove }: Props) {
   const { floor } = state;
   const sprites = useSprites();
+  // 地形の絵はダンジョンごとに違う。どこへ潜っても同じ絵だと、別の場所に来た気がしない
+  const theme = dungeonOf(state.dungeon).theme;
   const me = state.actors.find((a) => a.id === myId);
 
   // 自キャラを常に中央に置く。端では盤外が映るが、盤外は真っ黒になるので問題ない
@@ -165,7 +168,13 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
           ]
             .filter(Boolean)
             .join(" ")}
-          style={sprites && known ? spriteStyle(TILE_SPRITE[tile]) : undefined}
+          style={
+            sprites && known
+              ? spriteStyle(
+                  tile === 'wall' ? theme.wall : tile === 'floor' ? theme.floor : TILE_SPRITE[tile],
+                )
+              : undefined
+          }
           onClick={movable && dir ? () => onMove(dir) : undefined}
         >
           {/* 倒れたものの残像。消えるアニメーションの間だけ出る */}

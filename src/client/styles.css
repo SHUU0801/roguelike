@@ -1486,3 +1486,82 @@ button.wide.primary {
   border: 1px solid #39404a;
   border-radius: 6px;
 }
+
+/* --- ホーム --- */
+
+/* 自分のキャラ。潜る前に「いま何者か」を一目で */
+.me-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.me-sprite {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  background: #11141a;
+  border: 1px solid #2a2e35;
+  border-radius: 6px;
+}
+
+.me-info { display: flex; flex-direction: column; gap: 2px; }
+.me-info b { font-size: 17px; }
+
+/* 行き先 */
+.dungeons { display: flex; flex-direction: column; gap: 8px; }
+
+.dungeon-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  text-align: left;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.dungeon-card.on { border-color: #e0c060; background: #262317; }
+
+/* 開いていないダンジョン。押せないことが色で分かるようにする */
+.dungeon-card.locked { opacity: 0.45; }
+
+.d-head { display: flex; align-items: center; gap: 6px; font-size: 15px; }
+.d-depth { margin-left: auto; font-size: 12px; color: #7b8694; }
+.d-tag { font-size: 12px; color: #9aa4b2; }
+.d-done { font-size: 11px; color: #79d19a; }
+
+/* 倉庫 */
+.stash {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+
+.stash-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 6px;
+}
+
+/* 持ち込むものは枠を光らせる。押して選んだことが分かる必要がある */
+.stash-item.on { border-color: #e0c060; background: #262317; }
+
+.hint-inline { font-size: 11px; font-weight: 400; color: #7b8694; }
+.warn { margin: 0; font-size: 12px; color: #e08a3c; }

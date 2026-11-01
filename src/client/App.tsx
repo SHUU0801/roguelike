@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActionBar } from './ActionBar';
 import { DPad } from './DPad';
 import { FloorView } from './FloorView';
@@ -8,9 +8,11 @@ import { LevelUp } from './LevelUp';
 import { Lobby } from './Lobby';
 import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
-import { useGame } from './useGame';
+import { goToDungeon, useGame } from './useGame';
+import { bringHome, markCleared, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
 import { isMuted, setMuted, sfx } from './sfx';
+import type { ItemId } from '../shared/items';
 import {
   FUEL_DANGER,
   FUEL_WARN,
@@ -44,6 +46,8 @@ export function App() {
   const [howToOpen, setHowToOpen] = useState(false);
   /** 「あとで」で閉じたレベルアップ画面。溜まった回数が増えたらまた出す */
   const [perkSnoozed, setPerkSnoozed] = useState(0);
+  /** ホームで持ち込んだもの。決着したときに倉庫から引くのに使う */
+  const broughtRef = useRef<ItemId[]>([]);
 
   const deadlineAt = conn.status === 'open' ? conn.state.deadlineAt : null;
   const secondsLeft = useSecondsLeft(deadlineAt);
@@ -77,6 +81,31 @@ export function App() {
     if (phase === 'won') sfx.win();
     if (phase === 'lost') sfx.lose();
   }, [phase]);
+
+  /*
+   * 踏破したら袋の中身を倉庫へ。倒れたら何も持ち帰らない。
+   *
+   * ここが周回の芯。「もう1階だけ潜るか、ここで引き返すか」は、
+   * 持ち帰れるものが失われるからこそ悩める。
+   * 持ち込んだぶんは倉庫から引いてあるので、二重には増えない。
+   */
+  const settled = conn.status === 'open' && (phase === 'won' || phase === 'lost');
+  useEffect(() => {
+    if (!settled || conn.status !== 'open') return;
+    const carried = conn.state.items
+      .filter((i) => i.ownerId === conn.myId && i.at !== null)
+      .map((i) => i.itemId as ItemId);
+
+    if (phase === 'won') {
+      bringHome(carried);
+      markCleared(conn.state.dungeon);
+    }
+    // 持ち込んだぶんは、勝っても負けても倉庫から消す。
+    // 勝った場合は carried に含まれて戻ってくる
+    spendFromStash(broughtRef.current);
+    broughtRef.current = [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
 
   // PC 向けの矢印キー操作。スマホのタップと同じ Intent を送るだけ。
   useEffect(() => {
@@ -159,6 +188,12 @@ export function App() {
         inviteUrl={inviteUrl}
         onStart={start}
         onChooseJob={conn.chooseJob}
+        onLoadout={(items) => {
+          broughtRef.current = items;
+          conn.setLoadout(items);
+        }}
+        /* 合流した人は行き先を変えられない。変えると先に入っている人が困る */
+        onChooseDungeon={new URLSearchParams(window.location.search).get('room') ? null : goToDungeon}
       />
     );
   }

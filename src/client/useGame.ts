@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Client, type Room } from '@colyseus/sdk';
+import { isDungeonId, type DungeonId } from '../shared/dungeons';
+import type { ItemId } from '../shared/items';
 import type { JobId } from '../shared/jobs';
 import type { PerkId } from '../shared/perks';
 import type { GameState, Intent } from '../shared/types';
@@ -38,6 +40,32 @@ const SERVER_URL = serverUrl();
 /** URL に ?room=xxxx が付いていれば、その部屋に合流する */
 function wantedRoomId(): string | null {
   return new URLSearchParams(window.location.search).get('room');
+}
+
+/**
+ * 行き先。URL の ?d= に入れる。
+ *
+ * 部屋を作るときにしか決められないので、変えるときは部屋を作り直す。
+ * URL に入れておけば、作り直しがただのページ遷移で済む。
+ */
+const DUNGEON_KEY = 'd';
+
+export function wantedDungeon(): DungeonId {
+  const v = new URLSearchParams(window.location.search).get(DUNGEON_KEY);
+  return isDungeonId(v) ? v : 'ruin';
+}
+
+export function goToDungeon(id: DungeonId): void {
+  /*
+   * 再接続の合い言葉を先に捨てる。
+   *
+   * 行き先を変えるのは同じオリジン内の遷移なので sessionStorage が残る。
+   * 残っていると、新しい部屋を作るより先に `client.reconnect` が走って
+   * **さっきまでいた部屋に戻ってしまう**。
+   * 実際そうなって、URL は ?d=cave なのに遺跡に入っていた。
+   */
+  clearToken();
+  window.location.search = `?${DUNGEON_KEY}=${id}`;
 }
 
 /**
@@ -106,6 +134,8 @@ export type Connection =
       takePerk: (perkId: PerkId) => void;
       /** バックパックの並べ替え。これもターンの行動ではない */
       moveItem: (instanceId: string, x: number, y: number, rot: number) => void;
+      /** ホームで選んだ持ち込み */
+      setLoadout: (items: ItemId[]) => void;
     };
 
 export function useGame(): Connection {
@@ -123,7 +153,8 @@ export function useGame(): Connection {
 
     // ?room= があれば合流、無ければ新しい部屋を作る。
     // joinOrCreate を使わないのは、知らない人の部屋に勝手に入れないようにするため。
-    const joinFresh = () => (wanted ? client.joinById(wanted) : client.create('game'));
+    const joinFresh = () =>
+      wanted ? client.joinById(wanted) : client.create('game', { dungeon: wantedDungeon() });
 
     // 戻ろうとしている部屋の合い言葉を持っているときだけ再接続を試す
     const saved = loadToken();
@@ -182,6 +213,7 @@ export function useGame(): Connection {
       takePerk: (perkId: PerkId) => room.send('perk', perkId),
       moveItem: (instanceId: string, x: number, y: number, rot: number) =>
         room.send('rearrange', { instanceId, x, y, rot }),
+      setLoadout: (items: ItemId[]) => room.send('loadout', items),
     };
   }
 
@@ -202,5 +234,6 @@ export function useGame(): Connection {
     chooseJob: (job) => room.send('job', job),
     takePerk: (perkId) => room.send('perk', perkId),
     moveItem: (instanceId, x, y, rot) => room.send('rearrange', { instanceId, x, y, rot }),
+    setLoadout: (items) => room.send('loadout', items),
   };
 }
