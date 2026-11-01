@@ -1847,15 +1847,71 @@ button.wide.primary {
   border-radius: 12px;
 }
 
+/*
+ * 立ち絵の舞台。
+ *
+ * 枠で囲わない。囲うと「アイコン」に見えて、キャラが小さく感じる。
+ * 代わりに足元へ影を落として、床に立っているように見せる。
+ */
 .hero-art {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  width: 84px;
-  height: 84px;
-  background: #11141a;
-  border: 1px solid #2a2e35;
-  border-radius: 10px;
+  width: 128px;
+  height: 128px;
+}
+
+/* 足元の影。絵には描かない。描くと絵を差し替えたとき影だけ残る */
+.hero-art::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 76px;
+  height: 14px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+}
+
+/*
+ * 待機の呼吸。コマは横に2枚並んでいるので、横位置を1枠ずらすだけ。
+ * steps(2) で中間を飛ばす。なめらかに動かすと絵が滲む。
+ *
+ * 1.6 秒かけるのは、息づかいとして自然に見える速さだから。
+ * 速いとせわしなく、遅いと止まって見える。
+ */
+.portrait {
+  display: block;
+  image-rendering: pixelated;
+  /* 縮めるのは下端を軸に。中心を軸にすると足が浮いて影とずれる */
+  transform: scale(var(--portrait-zoom, 1));
+  transform-origin: bottom center;
+  animation: portrait-breathe 1.6s steps(2, jump-none) infinite;
+}
+
+/*
+ * 背の低い画面では立ち絵を縮める。
+ *
+ * 128px のまま置いたら、iPhone SE（375x667）で仲間の行が折り返しの下に落ちた。
+ * ここの高さは昔から「667 で収まる」が条件で、広げるたびに下が押し出される。
+ * 絵を縮めるほうが、仲間の顔が見えなくなるより軽い。
+ */
+@media (max-height: 720px) {
+  .hero-art { width: 100px; height: 100px; }
+  .hero-art::after { width: 60px; height: 11px; }
+  .portrait { --portrait-zoom: 0.78; }
+}
+
+@keyframes portrait-breathe {
+  from { background-position-x: 0; }
+  to { background-position-x: var(--frame, -128px); }
+}
+
+/* 動きを減らす設定の人には止めて出す。呼吸くらいで酔わせない */
+@media (prefers-reduced-motion: reduce) {
+  .portrait { animation: none; }
 }
 
 .hero-art.small { width: 80px; height: 80px; }

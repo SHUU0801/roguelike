@@ -5,7 +5,7 @@ import { JOBS, JOB_IDS, jobOf, type JobId } from '../shared/jobs';
 import { BASE_SKILL, SKILLS, skillOf, type SkillId } from '../shared/skills';
 import { BAG_H, BAG_W, MAX_PLAYERS, type GameState } from '../shared/types';
 import { HowTo } from './HowTo';
-import { Icon, TileIcon } from './Icon';
+import { Icon, Portrait, TileIcon } from './Icon';
 import { Invite } from './Invite';
 import { ProfileSheet } from './ProfileSheet';
 import { loadProfile, userLevel } from './profile';
@@ -169,8 +169,9 @@ export function Lobby({
           <div className="home">
             {/* 中央にキャラ。一番大きい */}
             <div className="hero-stage">
+              {/* 立ち絵。盤の 16x16 ではなく、ホーム専用の 128x128 */}
               <span className="hero-art">
-                <TileIcon id={job.sprite} size={64} />
+                <Portrait job={myJob} size={128} />
               </span>
               <div className="hero-name">
                 <Icon id={job.icon} size={16} />

@@ -12,7 +12,13 @@
  * 並び順は src/shared/sprites.ts の SPRITE_INDEX と必ず一致させること。
  */
 import { deflateSync } from 'node:zlib';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import {
+  PORTRAIT_FRAMES,
+  PORTRAIT_JOBS,
+  PORTRAIT_SIZE,
+  drawPortrait,
+} from './portraits.mjs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,6 +64,19 @@ const PALETTE = {
   n: '#2f7a52', // 暗い緑
   P: '#7a5ca8', // 紫
   B: '#4a7fb5', // 青
+
+  /*
+   * 立ち絵（128x128）用。素材ごとに 明・中・暗・輪郭 の4段を持つ。
+   * 盤のドット絵は 16x16 で、1ドットに影を入れる余地が無いのでここだけ。
+   * tools/portraits.mjs の FAMILIES と必ず対で直すこと。
+   */
+  h: '#a9b2c2', e: '#f3dcbb', f: '#e07a6e', m: '#4f9a6d', i: '#9a7ccb', // 明
+  g: '#39404e', s: '#c49a70', r: '#8f3a33', q: '#1f5538', p: '#553d78', // 中〜暗
+  u: '#8f6c4a', v: '#5a241f', x: '#143826', z: '#3a2a55',               // 輪郭
+  w: '#c2c7d0', V: '#9aa2b0', U: '#6e7686',                             // 白布
+  y: '#b8962e', T: '#8a6f1e', Q: '#5c4a12',                             // 金
+  t: '#5c3c20', X: '#3d2816', Z: '#261806',                             // 革
+  J: '#232833', A: '#4a5260', C: '#4a3a0e',                             // 濃い輪郭
   // 「明るい＝歩ける」に統一する。
   // 壁を床より明るくすると、初見が明るいところを道だと思って押してしまう。
   1: '#2b3340', // 床（盤面で一番明るい）
@@ -649,26 +668,26 @@ function toPng(width, height, pixels) {
 }
 
 /** 文字絵の並びから1枚の PNG を書き出す */
-function buildSheet(layout, art, cols, outPath) {
+function buildSheet(layout, art, cols, outPath, tile = TILE) {
   const rows = Math.ceil(layout.length / cols);
-  const W = cols * TILE;
-  const H = rows * TILE;
+  const W = cols * tile;
+  const H = rows * tile;
   const px = new Uint8Array(W * H * 4);
 
   layout.forEach((name, index) => {
     const cell = art[name];
     if (!cell) throw new Error(`'${name}' の絵が無い`);
-    if (cell.length !== TILE) {
-      throw new Error(`'${name}': ${cell.length} 行（${TILE} 行であること）`);
+    if (cell.length !== tile) {
+      throw new Error(`'${name}': ${cell.length} 行（${tile} 行であること）`);
     }
 
-    const ox = (index % cols) * TILE;
-    const oy = Math.floor(index / cols) * TILE;
+    const ox = (index % cols) * tile;
+    const oy = Math.floor(index / cols) * tile;
 
     cell.forEach((line, y) => {
-      if (line.length !== TILE) {
+      if (line.length !== tile) {
         throw new Error(
-          `'${name}' の ${y + 1} 行目: ${line.length} 文字（${TILE} 文字であること）`,
+          `'${name}' の ${y + 1} 行目: ${line.length} 文字（${tile} 文字であること）`,
         );
       }
       [...line].forEach((ch, x) => {
@@ -691,6 +710,36 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 buildSheet(LAYOUT, ART, COLS, resolve(here, '../public/sprites/tiles.png'));
 buildSheet(ICON_LAYOUT, ICON_ART, ICON_COLS, resolve(here, '../public/sprites/icons.png'));
+
+/*
+ * 立ち絵。1職業 1行、待機の2コマを横に並べる。
+ * コマ送りは background-position-x を横へずらすだけなので、
+ * **同じ職業のコマが折り返しをまたいではいけない。**
+ */
+const PORTRAIT_LAYOUT = [];
+const PORTRAIT_ART = {};
+for (const job of PORTRAIT_JOBS) {
+  for (let f = 0; f < PORTRAIT_FRAMES; f++) {
+    const name = f === 0 ? job : `${job}_b`;
+    PORTRAIT_LAYOUT.push(name);
+    PORTRAIT_ART[name] = drawPortrait(job, f);
+  }
+}
+/*
+ * **手で描いた立ち絵があれば、絶対に上書きしない。**
+ *
+ * ここが作るのは置きっぱなしの仮絵。本物は手で描く。
+ * 盤のアイコンを1つ直すたびに `npm run sprites` を走らせるので、
+ * 無条件に書くと、描いた絵がその1回で消える。
+ * 作り直したいときは `npm run sprites -- --portraits` を付ける。
+ */
+const portraitPath = resolve(here, '../public/sprites/portraits.png');
+const forcePortraits = process.argv.includes('--portraits');
+if (!existsSync(portraitPath) || forcePortraits) {
+  buildSheet(PORTRAIT_LAYOUT, PORTRAIT_ART, PORTRAIT_FRAMES, portraitPath, PORTRAIT_SIZE);
+} else {
+  console.log(`${portraitPath} （手描きがあるので触らない。作り直すなら -- --portraits）`);
+}
 
 console.log(`盤面の並び: ${LAYOUT.join(', ')}`);
 console.log(`アイコンの並び: ${ICON_LAYOUT.join(', ')}`);

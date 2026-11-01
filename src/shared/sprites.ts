@@ -106,3 +106,45 @@ export const TILE_SPRITE = {
   wall: 'wall',
   stairs: 'stairs',
 } as const satisfies Record<string, SpriteId>;
+
+/**
+ * ホーム画面の立ち絵。
+ *
+ * 盤のスプライト（16×16）とは別のシート。大きさも役目も違う。
+ *
+ * ## 並び
+ *
+ * 1職業 1行、横に待機の2コマ。**コマは必ず横に隣り合わせる。**
+ * CSS は background-position-x を1枠ずらしてコマを切り替えるので、
+ * 折り返しをまたぐと別人が出る。
+ *
+ *   ┌──────┬──────┐
+ *   │ 戦士 0   │ 戦士 1   │
+ *   │ 盗賊 0   │ 盗賊 1   │
+ *   │ 魔法 0   │ 魔法 1   │
+ *   │ 僧侶 0   │ 僧侶 1   │
+ *   └──────┴──────┘
+ *
+ * ## 手で描いた絵に差し替えるとき
+ *
+ * この並びどおりの 256×512 の PNG を public/sprites/portraits.png に置くだけ。
+ * 背景は透過、1コマ 128×128。
+ * `npm run sprites` は**すでにある portraits.png を上書きしない**ので、
+ * 置いたあとに他の絵を作り直しても消えない。
+ */
+export const PORTRAIT_SHEET = {
+  url: '/sprites/portraits.png',
+  tile: 128,
+  cols: 2,
+  rows: 4,
+  /** 待機のコマ数。シート上では横に並ぶ */
+  frames: 2,
+} as const;
+
+/** 行番号。職業の並び順そのもの */
+export const PORTRAIT_ROW: Record<'warrior' | 'rogue' | 'mage' | 'cleric', number> = {
+  warrior: 0,
+  rogue: 1,
+  mage: 2,
+  cleric: 3,
+};

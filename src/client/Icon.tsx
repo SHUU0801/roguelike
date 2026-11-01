@@ -1,6 +1,15 @@
 import type { CSSProperties } from 'react';
 import { ICON_INDEX, ICON_SHEET, type IconId } from '../shared/icons';
-import { SHEET, SPRITE_INDEX, type SpriteId } from '../shared/sprites';
+import {
+  PORTRAIT_ROW,
+  PORTRAIT_SHEET,
+  SHEET,
+  SPRITE_INDEX,
+  type SpriteId,
+} from '../shared/sprites';
+
+/** 立ち絵のある職業。盤のスプライトとは別の並びなので型も別に持つ */
+export type PortraitJob = keyof typeof PORTRAIT_ROW;
 
 /** 16 の倍数だけ。端数だと 1 ドットが間引かれてつぶれる */
 export type IconSize = 16 | 32 | 48 | 64 | 80 | 96;
@@ -66,6 +75,36 @@ export function TileIcon({ id, size = 32 }: { id: SpriteId; size?: IconSize }) {
         backgroundPosition: `${(col / (SHEET.cols - 1)) * 100}% ${
           (row / (SHEET.rows - 1)) * 100
         }%`,
+      }}
+    />
+  );
+}
+
+/**
+ * ホーム画面の立ち絵。
+ *
+ * 盤のスプライトと違い、**ピクセル指定で切り出す。**
+ * 盤は % 指定（大きさを変えても付いてくる）だが、立ち絵は
+ * コマ送りで横へ1枠ずらすので、枠の幅がそのままピクセルで要る。
+ *
+ * 呼吸は CSS（.portrait）がやる。ここは1コマ目を置くだけ。
+ */
+export function Portrait({ job, size = 128 }: { job: PortraitJob; size?: number }) {
+  const { tile, cols, rows, url } = PORTRAIT_SHEET;
+  const scale = size / tile;
+
+  return (
+    <span
+      className="portrait"
+      style={{
+        width: size,
+        height: size,
+        backgroundImage: `url(${url})`,
+        backgroundSize: `${cols * size}px ${rows * size}px`,
+        backgroundPosition: `0px ${-PORTRAIT_ROW[job] * size}px`,
+        // コマ送りの幅。CSS の @keyframes がこれだけ横へずらす
+        ['--frame' as string]: `${-size}px`,
+        ['--portrait-scale' as string]: scale,
       }}
     />
   );
