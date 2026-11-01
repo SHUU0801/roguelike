@@ -1183,6 +1183,17 @@ function putMonster(
 
   // 1階しかない。降りたら踏破
   assert(dungeonOf('tutorial').depth === 1, '1階で終わり');
+
+  /*
+   * Tutorial.tsx の1歩目は「x > 6 なら部屋を出た」で判定している。
+   * 地図を描き替えて仕切りの位置が変わると、
+   * **最初の指示が出たまま進まなくなる。** 気づけるようにここで縛る。
+   */
+  const f = state.floor;
+  const wallCol = (x: number) =>
+    [1, 2, 4, 5].every((y) => f.tiles[y * f.width + x] === 'wall');
+  assert(wallCol(6), '左右の部屋を分ける壁は x=6（Tutorial.tsx の1歩目の判定）');
+  assert(f.tiles[3 * f.width + 6] === 'floor', 'その壁の通り道は y=3');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
