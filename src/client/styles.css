@@ -116,7 +116,9 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding: 10px 14px;
+  /* 左は十字ボタンのぶん空ける。空けないと、小さい端末でログが
+     半透明のボタンの裏に回って読めなくなる（実測 375x667 で重なった） */
+  padding: 10px 14px 10px 158px;
   border-top: 1px solid #2a2e35;
   font-size: 13px;
   line-height: 1.6;
@@ -775,4 +777,297 @@ button.wide.primary {
   margin: 0;
   font-size: 12px;
   color: #7b8694;
+}
+
+/* ===== 職業・レベル・メニュー・十字ボタン ===== */
+
+/* --- メニュー画面 --- */
+
+.title {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.title h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0.12em;
+}
+
+.lead {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #9aa4b2;
+}
+
+/* 職業カード。2列。選ぶ前に性能とスキルを全部見せる */
+.jobs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.job-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 9px;
+  text-align: left;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.job-card.on {
+  border-color: #e0c060;
+  background: #262317;
+}
+
+.job-glyph { font-size: 20px; line-height: 1; }
+.job-name { font-size: 15px; font-weight: 700; }
+.job-tag { font-size: 11px; color: #9aa4b2; }
+
+.job-stats {
+  font-size: 11px;
+  color: #7b8694;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-skill {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #8fa8c4;
+}
+
+.job-others {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #d9a441;
+}
+
+.party-list .you {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #14161a;
+  background: #e0c060;
+  border-radius: 4px;
+}
+
+.menu-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.menu-actions .wide { flex: 1; }
+
+/* --- あそびかた --- */
+
+.howto {
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #171b21;
+  border: 1px solid #2a2e35;
+  border-radius: 10px;
+}
+
+/* 中だけスクロールさせる。枠ごと伸ばすとボタンが画面の外へ出る */
+.howto-body {
+  overflow-y: auto;
+  min-height: 0;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.howto-body h3 {
+  margin: 14px 0 4px;
+  font-size: 14px;
+  color: #e0c060;
+}
+
+.howto-body h3:first-child { margin-top: 0; }
+.howto-body p { margin: 0; color: #c8ced6; }
+.howto-body ul { margin: 0; padding-left: 1.2em; color: #c8ced6; }
+.howto-body code {
+  padding: 1px 5px;
+  font-size: 12px;
+  background: #222730;
+  border-radius: 4px;
+}
+
+.howto-jobs { list-style: none; padding: 0; }
+.howto-jobs li { margin-bottom: 8px; }
+.dim-text { color: #8fa8c4; font-size: 12px; }
+
+/* --- 経験値バー --- */
+
+.expbar {
+  position: relative;
+  height: 14px;
+  background: #1b2029;
+  border-bottom: 1px solid #2a2e35;
+}
+
+.expbar i {
+  display: block;
+  height: 100%;
+  background: #4d7fc4;
+  transition: width 0.25s ease-out;
+}
+
+.expbar span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  color: #c8ced6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* カードを選んでいないレベルアップが溜まっているときは光って催促する */
+.expbar.pending i { background: #e0c060; }
+.expbar.pending { animation: exp-pending 1.2s ease-in-out infinite; }
+
+@keyframes exp-pending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.status .level {
+  color: #8fa8c4;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-job { margin: 0 2px; }
+.chip-lv { margin-left: 4px; color: #7b8694; font-size: 11px; }
+
+/* --- レベルアップのカード --- */
+
+.levelup {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #171b21;
+  border: 1px solid #e0c060;
+  border-radius: 10px;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px;
+  text-align: left;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.card:active { background: #262317; border-color: #e0c060; }
+
+.card-glyph { font-size: 22px; line-height: 1; }
+.card-name { font-size: 15px; font-weight: 700; }
+.card-desc { font-size: 12px; color: #9aa4b2; }
+
+.card-have {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #d9a441;
+}
+
+/* --- 十字ボタン --- */
+
+/*
+ * 盤に重ねて左下に出す。375x667 では盤とログとボタン列で縦が埋まっていて、
+ * 十字ボタンのぶんの行を足すと下が画面の外に出る（DPad.tsx に経緯）。
+ */
+.dpad {
+  position: fixed;
+  left: 10px;
+  /*
+   * できるだけ下に置く。上げるとその分だけ盤に食い込む。
+   * 375x667 で実測したところ、ここまで下げれば盤には一切かからず、
+   * ログとボタン列の帯の左半分（ボタンが無い場所）に収まる。
+   */
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(3, 46px);
+  gap: 3px;
+}
+
+.dpad-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 19px;
+  line-height: 1;
+  font-family: inherit;
+  color: #e8e8e8;
+  /* 半透明。触っていない間は盤が透ける */
+  background: rgba(34, 39, 48, 0.74);
+  border: 1px solid rgba(90, 100, 115, 0.6);
+  border-radius: 9px;
+}
+
+.dpad-btn:active:not(:disabled) {
+  background: rgba(63, 125, 90, 0.85);
+  transform: scale(0.94);
+}
+
+.dpad-btn:disabled { opacity: 0.3; }
+
+.dpad-wait {
+  font-size: 22px;
+  color: #9aa4b2;
+  background: rgba(34, 39, 48, 0.55);
+}
+
+/* ボタン列は十字ボタンと重ならないよう右に寄せ、2列2段に畳む */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-left: auto;
+  width: min(210px, 56%);
+}
+
+.actions button.skill {
+  font-size: 12px;
+  position: relative;
+}
+
+/* 待ち時間の残り。押せない理由を数字で出す */
+.actions button.skill .cd {
+  margin-left: 4px;
+  padding: 0 5px;
+  font-size: 11px;
+  color: #14161a;
+  background: #7b8694;
+  border-radius: 8px;
 }

@@ -6,7 +6,17 @@ import {
   type GameState,
   type Intent,
 } from '../shared/types';
-import { addPlayer, createInitialGame, pushLog, removePlayer, startGame } from './game';
+import { isJobId } from '../shared/jobs';
+import { isPerkId } from '../shared/perks';
+import {
+  addPlayer,
+  chooseJob,
+  createInitialGame,
+  pushLog,
+  removePlayer,
+  startGame,
+} from './game';
+import { takePerk } from './levels';
 import { resolveTurn } from './resolve';
 import { updateVision } from './vision';
 
@@ -49,6 +59,28 @@ export class GameRoom extends Room {
       startGame(this.game);
       updateVision(this.game);
       this.publish();
+    });
+
+    // 職業えらび。ロビーの間だけ受け付ける（game.ts 側でも弾いている）
+    this.onMessage<unknown>('job', (client, job) => {
+      if (!isJobId(job)) return;
+      chooseJob(this.game, client.sessionId, job);
+      this.publish();
+    });
+
+    /*
+     * レベルアップのカードを選ぶ。
+     *
+     * **ターンの行動ではない。** intent として扱うと、
+     * カードを選ぶために1ターン使うことになり、
+     * しかも全員がその人の選択を待つことになる（同期ターン制なので）。
+     * 別のメッセージにしておけば、選んでいる間もゲームは進む。
+     */
+    this.onMessage<unknown>('perk', (client, perkId) => {
+      if (!isPerkId(perkId)) return;
+      const actor = this.game.actors.find((a) => a.id === client.sessionId);
+      if (!actor) return;
+      if (takePerk(this.game, actor, perkId)) this.publish();
     });
   }
 

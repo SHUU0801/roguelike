@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ActionBar } from './ActionBar';
+import { DPad } from './DPad';
 import { FloorView } from './FloorView';
+import { HowTo } from './HowTo';
+import { LevelUp } from './LevelUp';
 import { Lobby } from './Lobby';
 import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
@@ -10,6 +13,8 @@ import { isMuted, setMuted, sfx } from './sfx';
 import {
   FUEL_DANGER,
   FUEL_WARN,
+  MAX_LEVEL,
+  expToNext,
   itemAt,
   tileAt,
   type Dir,
@@ -34,6 +39,9 @@ export function App() {
   const conn = useGame();
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [howToOpen, setHowToOpen] = useState(false);
+  /** 「あとで」で閉じたレベルアップ画面。溜まった回数が増えたらまた出す */
+  const [perkSnoozed, setPerkSnoozed] = useState(0);
 
   const deadlineAt = conn.status === 'open' ? conn.state.deadlineAt : null;
   const secondsLeft = useSecondsLeft(deadlineAt);
@@ -45,6 +53,7 @@ export function App() {
   );
 
   const [muted, setMutedState] = useState(isMuted);
+
 
   // ターンが進んだら、その中身に合わせて音を鳴らす。
   // 音のファイルは使わず sfx.ts がその場で合成する
@@ -100,6 +109,8 @@ export function App() {
         conn.send({ type: 'wait' });
       } else if (e.key === 'g') {
         conn.send({ type: 'pickUp' });
+      } else if (e.key === 's') {
+        conn.send({ type: 'skill' });
       }
     };
 
@@ -134,7 +145,15 @@ export function App() {
   const { state, myId, send, start, inviteUrl } = conn;
 
   if (state.phase === 'lobby') {
-    return <Lobby state={state} myId={myId} inviteUrl={inviteUrl} onStart={start} />;
+    return (
+      <Lobby
+        state={state}
+        myId={myId}
+        inviteUrl={inviteUrl}
+        onStart={start}
+        onChooseJob={conn.chooseJob}
+      />
+    );
   }
 
   const me = state.actors.find((a) => a.id === myId);
@@ -168,6 +187,7 @@ export function App() {
     <div className="app">
       <header className="status">
         <span>{state.floor.depth}F</span>
+        {me && <span className="level">Lv{me.level}</span>}
         <span>
           {me ? `HP ${me.hp}/${me.maxHp}` : '—'}
           {me && (
@@ -195,6 +215,13 @@ export function App() {
             下に5つ目を足すと 375px でボタンが細くなって押し間違える */}
         <button
           className="mute"
+          aria-label="あそびかた"
+          onClick={() => setHowToOpen(true)}
+        >
+          ❓
+        </button>
+        <button
+          className="mute"
           aria-label="全体マップ"
           aria-pressed={mapOpen}
           onClick={() => setMapOpen((v) => !v)}
@@ -213,6 +240,24 @@ export function App() {
           {muted ? '🔇' : '🔊'}
         </button>
       </header>
+
+      {/* 経験値バー。レベルが上がると未選択のカードが溜まるので、
+          溜まっているときはバー自体が光って催促する */}
+      {me && (
+        <div className={`expbar${me.pendingLevels > 0 ? ' pending' : ''}`}>
+          <i
+            style={{
+              width:
+                me.level >= MAX_LEVEL
+                  ? '100%'
+                  : `${Math.min(100, (me.exp / expToNext(me.level)) * 100)}%`,
+            }}
+          />
+          <span>
+            {me.level >= MAX_LEVEL ? '最大レベル' : `${me.exp} / ${expToNext(me.level)}`}
+          </span>
+        </div>
+      )}
 
       <PartyBar state={state} myId={myId} />
 
@@ -275,7 +320,28 @@ export function App() {
         onToggleInventory={() => setInventoryOpen((v) => !v)}
       />
 
+      {/* 歩くための十字ボタン。盤に重ねて左下に出す（DPad.tsx に理由） */}
+      <DPad
+        disabled={!playing && !(me !== undefined && !me.alive && state.phase === 'playing')}
+        onMove={(dir) => act({ type: 'move', dir })}
+        onWait={() => act({ type: 'wait' })}
+      />
+
       {mapOpen && <MiniMap state={state} myId={myId} onClose={() => setMapOpen(false)} />}
+
+      {/* レベルアップのカード。盤面は後ろで進み続ける */}
+      {me && me.pendingLevels > perkSnoozed && me.offers.length > 0 && (
+        <LevelUp
+          me={me}
+          onTake={(perkId) => {
+            conn.takePerk(perkId);
+            setPerkSnoozed(0);
+          }}
+          onLater={() => setPerkSnoozed(me.pendingLevels)}
+        />
+      )}
+
+      {howToOpen && <HowTo onClose={() => setHowToOpen(false)} />}
     </div>
   );
 }

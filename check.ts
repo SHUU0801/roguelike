@@ -1,8 +1,30 @@
 /** 使い捨ての動作確認スクリプト。npx tsx check.ts */
-import { addPlayer, createInitialGame, inventoryOf, startGame } from './src/server/game';
+import {
+  addPlayer,
+  chooseJob,
+  createInitialGame,
+  inventoryOf,
+  startGame,
+} from './src/server/game';
+import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn } from './src/server/resolve';
 import { updateVision } from './src/server/vision';
-import type { Actor, GameState, Intent } from './src/shared/types';
+import { JOBS, type JobId } from './src/shared/jobs';
+import { OFFER_COUNT, PERKS, PERK_IDS, perkCount } from './src/shared/perks';
+import { expToNext, type Actor, type GameState, type Intent } from './src/shared/types';
+
+/**
+ * 探索が始まったあとに職業を差し替える。
+ * chooseJob はロビーの間しか効かないので、試験ではここで直接書き換える。
+ */
+function setJob(actor: Actor, job: JobId): void {
+  const def = JOBS[job];
+  actor.job = job;
+  actor.maxHp = def.maxHp;
+  actor.hp = def.maxHp;
+  actor.atk = def.atk;
+  actor.def = def.def;
+}
 
 let failed = 0;
 function assert(cond: unknown, msg: string): void {
@@ -22,6 +44,43 @@ function fresh(): { state: GameState; me: Actor } {
 
 function turn(state: GameState, intent: Intent): void {
   resolveTurn(state, new Map<string, Intent>([['p1', intent]]));
+}
+
+/**
+ * 試験用の敵を1体置く。
+ * Actor の項目が増えるたびに3箇所直すのが面倒なので、ここ1つにまとめた。
+ */
+function putMonster(
+  state: GameState,
+  id: string,
+  speciesId: string,
+  pos: { x: number; y: number },
+  over: Partial<Actor> = {},
+): Actor {
+  const monster: Actor = {
+    id,
+    kind: 'monster',
+    team: 'M',
+    speciesId,
+    pos,
+    hp: 99,
+    maxHp: 99,
+    atk: 1,
+    def: 0,
+    alive: true,
+    fuel: 0,
+    slot: 0,
+    job: null,
+    level: 1,
+    exp: 0,
+    skillReadyAt: 0,
+    pendingLevels: 0,
+    offers: [],
+    perks: [],
+    ...over,
+  };
+  state.actors.push(monster);
+  return monster;
 }
 
 // --- 1. 盤面の中身 ---
@@ -124,20 +183,7 @@ function turn(state: GameState, intent: Intent): void {
 {
   const { state, me } = fresh();
   me.hp = 1;
-  state.actors.push({
-    id: 'bully',
-    kind: 'monster',
-    team: 'M',
-    speciesId: 'goblin',
-    pos: { x: me.pos.x + 1, y: me.pos.y },
-    hp: 99,
-    maxHp: 99,
-    atk: 99,
-    def: 0,
-    alive: true,
-    fuel: 0,
-    slot: 0,
-  });
+  putMonster(state, 'bully', 'goblin', { x: me.pos.x + 1, y: me.pos.y }, { atk: 99 });
   turn(state, { type: 'wait' });
   assert(state.phase === 'lost', `倒れると lost になる (phase=${state.phase})`);
 }
@@ -210,20 +256,7 @@ function turn(state: GameState, intent: Intent): void {
   const { state, me } = fresh();
   state.items.push({ id: 'it-drop', itemId: 'sword', pos: null, ownerId: 'p1' });
   me.hp = 1;
-  state.actors.push({
-    id: 'bully2',
-    kind: 'monster',
-    team: 'M',
-    speciesId: 'goblin',
-    pos: { x: me.pos.x + 1, y: me.pos.y },
-    hp: 99,
-    maxHp: 99,
-    atk: 99,
-    def: 0,
-    alive: true,
-    fuel: 0,
-    slot: 0,
-  });
+  putMonster(state, 'bully2', 'goblin', { x: me.pos.x + 1, y: me.pos.y }, { atk: 99 });
   turn(state, { type: 'wait' });
   const dropped = state.items.find((i) => i.id === 'it-drop');
   assert(
@@ -280,20 +313,7 @@ function turn(state: GameState, intent: Intent): void {
 {
   const { state, me } = fresh();
   state.actors = state.actors.filter((a) => a.kind === 'player');
-  state.actors.push({
-    id: 'chaser',
-    kind: 'monster',
-    team: 'M',
-    speciesId: 'goblin',
-    pos: { x: me.pos.x - 1, y: me.pos.y },
-    hp: 30,
-    maxHp: 30,
-    atk: 8,
-    def: 0,
-    alive: true,
-    fuel: 0,
-    slot: 0,
-  });
+  putMonster(state, 'chaser', 'goblin', { x: me.pos.x - 1, y: me.pos.y }, { hp: 30, maxHp: 30, atk: 8 });
   const before = me.hp;
   // 敵の反対側へ逃げる = 隣接から離れる
   turn(state, { type: 'move', dir: 'e' });
@@ -440,6 +460,152 @@ function turn(state: GameState, intent: Intent): void {
     a.length === 1 && b.length === 1 && a[0].itemId !== b[0].itemId,
     `開始アイテムが人ごとに違う (${a[0]?.itemId} / ${b[0]?.itemId})`,
   );
+}
+
+// --- 26. 開始アイテムは職業で決まる ---
+{
+  const state = createInitialGame();
+  addPlayer(state, 'p1');
+  chooseJob(state, 'p1', 'mage');
+  startGame(state);
+  const mine = state.items.filter((i) => i.ownerId === 'p1');
+  assert(
+    mine.length === 1 && mine[0].itemId === JOBS.mage.startingItem,
+    `魔法使いは ${JOBS.mage.startingItem} を持って始まる (${mine[0]?.itemId})`,
+  );
+}
+
+// --- 27. 経験値はパーティ全員に同じだけ入る ---
+{
+  const state = createInitialGame();
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  startGame(state);
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const [p1, p2] = state.actors;
+
+  const victim = putMonster(state, 'xp', 'bat', { x: p1.pos.x + 1, y: p1.pos.y }, {
+    hp: 1,
+    maxHp: 1,
+    atk: 0,
+  });
+  resolveTurn(
+    state,
+    new Map<string, Intent>([
+      ['p1', { type: 'move', dir: 'e' }],
+      ['p2', { type: 'wait' }],
+    ]),
+  );
+  assert(!victim.alive, 'とどめを刺せた（前提）');
+  assert(
+    p1.exp === p2.exp && p1.exp > 0,
+    `経験値は倒していない人にも同じだけ入る (p1=${p1.exp} / p2=${p2.exp})`,
+  );
+}
+
+// --- 28. レベルが上がるとカードが3枚出る ---
+{
+  const { state, me } = fresh();
+  awardExp(state, expToNext(1));
+  assert(me.level === 2, `経験値が満ちるとレベルが上がる (Lv${me.level})`);
+  assert(me.pendingLevels === 1, `選んでいないレベルアップが溜まる (${me.pendingLevels})`);
+  assert(me.offers.length === OFFER_COUNT, `カードが ${OFFER_COUNT} 枚出る (${me.offers.length})`);
+
+  const atkBefore = me.atk;
+  const picked = me.offers.includes('power') ? 'power' : me.offers[0];
+  assert(takePerk(state, me, picked), 'カードを取れる');
+  assert(me.pendingLevels === 0 && me.offers.length === 0, '取ると残りの札は消える');
+  if (picked === 'power') {
+    assert(me.atk === atkBefore + 2, `剛力で攻撃 +2 (${atkBefore} → ${me.atk})`);
+  }
+}
+
+// --- 29. 提示していない札は取れない（好きな札を送られても困らない）---
+{
+  const { state, me } = fresh();
+  awardExp(state, expToNext(1));
+  const notOffered = PERK_IDS.find((id) => !me.offers.includes(id));
+  assert(
+    notOffered !== undefined && !takePerk(state, me, notOffered),
+    '提示していない札は取れない',
+  );
+}
+
+// --- 30. 同じ札は上限で止まる（防御を積んで無敵にならない）---
+{
+  const { state, me } = fresh();
+  for (let i = 0; i < 10; i++) {
+    me.pendingLevels = 1;
+    me.offers = ['guard'];
+    takePerk(state, me, 'guard');
+  }
+  assert(
+    perkCount(me.perks, 'guard') === PERKS.guard.maxStacks,
+    `鉄壁は ${PERKS.guard.maxStacks} 枚で止まる (${perkCount(me.perks, 'guard')})`,
+  );
+}
+
+// --- 31. 戦士のスキルは隣の敵を全部殴る ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'warrior');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const a = putMonster(state, 's1', 'goblin', { x: me.pos.x + 1, y: me.pos.y }, {
+    hp: 50,
+    maxHp: 50,
+    atk: 0,
+  });
+  const b = putMonster(state, 's2', 'goblin', { x: me.pos.x - 1, y: me.pos.y }, {
+    hp: 50,
+    maxHp: 50,
+    atk: 0,
+  });
+  turn(state, { type: 'skill' });
+  assert(a.hp < 50 && b.hp < 50, `ぶんまわしが両隣に当たる (${a.hp} / ${b.hp})`);
+}
+
+// --- 32. 盗賊のスキルは防御を無視する ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'rogue');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const wall = putMonster(state, 'tanky', 'slime', { x: me.pos.x + 1, y: me.pos.y }, {
+    hp: 60,
+    maxHp: 60,
+    atk: 0,
+    def: 99,
+  });
+  turn(state, { type: 'skill' });
+  assert(
+    wall.hp === 60 - me.atk,
+    `きゅうしょづきは防御99でも攻撃力ぶん通る (${60 - wall.hp} ダメージ / 攻撃力 ${me.atk})`,
+  );
+}
+
+// --- 33. スキルは待ち時間が明けるまで使えない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'rogue');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const target = putMonster(state, 'cd', 'slime', { x: me.pos.x + 1, y: me.pos.y }, {
+    hp: 99,
+    maxHp: 99,
+    atk: 0,
+    def: 99,
+  });
+  turn(state, { type: 'skill' });
+  const afterFirst = target.hp;
+  turn(state, { type: 'skill' });
+  assert(target.hp === afterFirst, `連続では撃てない (${afterFirst} → ${target.hp})`);
+}
+
+// --- 34. 空振りしたスキルは待ち時間を使わない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'warrior');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  turn(state, { type: 'skill' }); // 隣に敵がいない
+  assert(me.skillReadyAt <= state.turn, '敵がいないときに撃っても待ち時間にならない');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

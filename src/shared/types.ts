@@ -3,6 +3,9 @@
  * 「同じ言語・同じ型をサーバーとクライアントで使い回す」のがこの構成の狙い。
  */
 
+import type { JobId } from './jobs';
+import type { PerkId } from './perks';
+
 export type TileKind = 'wall' | 'floor' | 'stairs';
 
 export type Pos = { x: number; y: number };
@@ -84,6 +87,31 @@ export type Actor = {
    * モンスターは 0。
    */
   slot: number;
+
+  // --- ここから下はプレイヤーだけが使う ---
+
+  /** 職業。ロビーで選ぶ。選ばないまま始めたら戦士になる */
+  job: JobId | null;
+  level: number;
+  /** 今のレベルの中での経験値。レベルが上がるたび 0 に戻る */
+  exp: number;
+  /** 職業スキルが次に使えるターン。state.turn がこれ以上なら使える */
+  skillReadyAt: number;
+  /** まだカードを選んでいないレベルアップの回数。溜められる */
+  pendingLevels: number;
+  /**
+   * いま提示している3枚。選ぶまで変わらない。
+   *
+   * サーバーが持つのが要点。クライアント側で引くと、リロードで引き直せてしまう。
+   *
+   * **ここは対戦でも運のままにする。** 00_ゴール定義.md が消そうとしているのは
+   * 「同じ判断をしたのに結果が違う」運（攻撃が外れる類い）であって、運そのものではない。
+   * カードは**決める前に見える**ので、引きが変われば作戦が変わる。
+   * 運が判断を生む側に回っているから、これは入れていい運。
+   */
+  offers: PerkId[];
+  /** 取った強化。同じものを取りすぎないように数を見る */
+  perks: PerkId[];
 };
 
 export type ItemInstance = {
@@ -142,8 +170,31 @@ export type Intent =
   | { type: 'drop'; instanceId: string }
   /** 隣で倒れている仲間を起こす。自分の最大HPを払う */
   | { type: 'revive' }
+  /** 職業スキル。職業ごとに1つなので、どれを使うかの指定は要らない */
+  | { type: 'skill' }
   | { type: 'descend' }
   | { type: 'wait' };
+
+/**
+ * レベルの上限。
+ *
+ * 5フロアで全部の敵を倒しても 6 前後にしかならないので、10 は事実上の安全弁。
+ * 上限が無いと、粘って敵を狩り続けるのが最適解になり、
+ * 松明で「時間を資源にする」ために入れた仕掛け（段階B）と正面からぶつかる。
+ */
+export const MAX_LEVEL = 10;
+
+/**
+ * 次のレベルまでに要る経験値。
+ *
+ * 1→2 が 14、以降 +6 ずつ。5 まで上げるのに合計 92。
+ * 1ランで出る敵は 40 体前後（depth で増える）、経験値は1体 3〜6 なので、
+ * 半分強を倒すとレベル 5 あたりに着く。全部倒して 6〜7。
+ * **机上の計算。たいまつの数値と同じで、遊んでから詰める。**
+ */
+export function expToNext(level: number): number {
+  return 8 + level * 6;
+}
 
 /** 蘇生の代償。アイテムを要求しない（出なかったランで詰むのを避ける） */
 export const REVIVE_COST = 4;

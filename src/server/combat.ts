@@ -1,6 +1,7 @@
 import { speciesOf } from '../shared/monsters';
 import type { Actor, GameState } from '../shared/types';
 import { pushLog } from './game';
+import { applyMend, awardExp, expFor } from './levels';
 import { randInt } from './random';
 
 /**
@@ -54,6 +55,13 @@ export function damage(
   if (defender.hp === 0) {
     defender.alive = false;
     pushLog(state, defender.kind === 'player' ? `${name}は力尽きた…` : `${name}を倒した`);
+
+    // 経験値と吸命。ここに置くのは、倒れる経路が1本しかないから。
+    // 殴り・スキル・爆弾・松明切れのどれで倒しても必ずここを通る
+    if (defender.kind === 'monster') {
+      if (attacker?.kind === 'player') applyMend(state, attacker);
+      awardExp(state, expFor(defender));
+    }
   }
 }
 

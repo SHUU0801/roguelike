@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Client, type Room } from '@colyseus/sdk';
+import type { JobId } from '../shared/jobs';
+import type { PerkId } from '../shared/perks';
 import type { GameState, Intent } from '../shared/types';
 
 /**
@@ -99,6 +101,9 @@ export type Connection =
       inviteUrl: string;
       send: (intent: Intent) => void;
       start: () => void;
+      chooseJob: (job: JobId) => void;
+      /** レベルアップのカードを取る。ターンの行動ではないので intent ではない */
+      takePerk: (perkId: PerkId) => void;
     };
 
 export function useGame(): Connection {
@@ -171,6 +176,8 @@ export function useGame(): Connection {
       roomId: room.roomId,
       send: (intent: Intent) => room.send('intent', intent),
       start: () => room.send('start'),
+      chooseJob: (job: JobId) => room.send('job', job),
+      takePerk: (perkId: PerkId) => room.send('perk', perkId),
     };
   }
 
@@ -188,5 +195,7 @@ export function useGame(): Connection {
     inviteUrl: `${base}?room=${room.roomId}`,
     send: (intent) => room.send('intent', intent),
     start: () => room.send('start'),
+    chooseJob: (job) => room.send('job', job),
+    takePerk: (perkId) => room.send('perk', perkId),
   };
 }

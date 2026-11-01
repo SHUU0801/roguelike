@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from '../shared/items';
-import { SPECIES, speciesOf, type SpeciesId } from '../shared/monsters';
+import { JOB_IDS, jobOf, type JobId } from '../shared/jobs';
+import { SPECIES, type SpeciesId } from '../shared/monsters';
 import {
   FUEL_START,
   MAX_DEPTH,
@@ -10,7 +11,7 @@ import {
   type Pos,
 } from '../shared/types';
 import { createFloor, scatterPositions, spawnPos } from './dungeon';
-import { pick, randInt, shuffle } from './random';
+import { pick, randInt } from './random';
 
 /** フロアに出すモンスターの種類。深さに関係なく同じ顔ぶれ（v0 の範囲） */
 const MONSTER_POOL: SpeciesId[] = ['goblin', 'bat', 'slime'];
@@ -28,15 +29,13 @@ const ITEM_POOL: ItemId[] = [
   'scroll',
 ];
 
-/**
- * 開始時に1人1個ずつ配るもの。
+/*
+ * 開始アイテムは職業ごとに決まる（shared/jobs.ts の startingItem）。
  *
- * キャラクターに恒久的な性能差を付けない代わりに、これで役割を分ける
- * （03_改善構成.md §2-4）。クラスと違って毎回ちがう形で起きるので、
- * 「毎回ちがう持ち物でやりくりする」という芯と一致する。
- * 人数が減っても壊れない（2人なら2個配るだけ）。
+ * もとは slot 順にシャッフルして配っていた（03_改善構成.md §2-4、
+ * 「クラスを入れずに役割を分ける」）。職業を入れた以上、
+ * 配るものと職業がばらばらだと、戦士に爆弾が渡って役割がぼやける。
  */
-const STARTING_KITS: ItemId[] = ['sword', 'shield', 'potion', 'bomb'];
 
 /** 持ち物の上限。スマホの画面に並ぶ数で決めている */
 export const MAX_INVENTORY = 6;
@@ -72,13 +71,10 @@ export function startGame(state: GameState): void {
   if (state.phase !== 'lobby') return;
   state.phase = 'playing';
 
-  const kits = shuffle([...STARTING_KITS]);
-  state.actors
-    .filter((a) => a.kind === 'player')
-    .forEach((player, i) => {
-      const itemId = kits[i % kits.length];
-      state.items.push({ id: newId('i'), itemId, pos: null, ownerId: player.id });
-    });
+  for (const player of state.actors.filter((a) => a.kind === 'player')) {
+    const itemId: ItemId = jobOf(player.job).startingItem;
+    state.items.push({ id: newId('i'), itemId, pos: null, ownerId: player.id });
+  }
 
   pushLog(state, 'ダンジョンに入った');
 }
@@ -86,12 +82,16 @@ export function startGame(state: GameState): void {
 export function addPlayer(state: GameState, id: string): void {
   if (state.actors.some((a) => a.id === id)) return;
 
-  const species = speciesOf('hero');
-  const used = new Set(
-    state.actors.filter((a) => a.kind === 'player').map((a) => a.slot),
-  );
+  const players = state.actors.filter((a) => a.kind === 'player');
+  const used = new Set(players.map((a) => a.slot));
   let slot = 1;
   while (used.has(slot)) slot++;
+
+  // まだ誰も選んでいない職業を既定にする。
+  // 全員が同じ職業で始まるより、何も考えずに始めても噛み合うほうがいい
+  const taken = new Set(players.map((a) => a.job));
+  const job: JobId = JOB_IDS.find((j) => !taken.has(j)) ?? 'warrior';
+  const def = jobOf(job);
 
   state.actors.push({
     id,
@@ -101,15 +101,44 @@ export function addPlayer(state: GameState, id: string): void {
     team: 'A',
     speciesId: 'hero',
     pos: freeSpawn(state),
-    hp: species.maxHp,
-    maxHp: species.maxHp,
-    atk: species.atk,
-    def: species.def,
+    hp: def.maxHp,
+    maxHp: def.maxHp,
+    atk: def.atk,
+    def: def.def,
     alive: true,
     fuel: FUEL_START,
     slot,
+    job,
+    level: 1,
+    exp: 0,
+    skillReadyAt: 0,
+    pendingLevels: 0,
+    offers: [],
+    perks: [],
   });
-  pushLog(state, `${slot}番が加わった`);
+  pushLog(state, `${slot}番が加わった（${def.name}）`);
+}
+
+/**
+ * ロビーで職業を変える。
+ *
+ * 始まってからは変えさせない。レベルもカードも職業の上に積み上がっているので、
+ * 途中で替えると、積み上げたものをどう引き継ぐかという問題が丸ごと増える。
+ */
+export function chooseJob(state: GameState, id: string, job: JobId): void {
+  if (state.phase !== 'lobby') return;
+
+  const actor = state.actors.find((a) => a.id === id && a.kind === 'player');
+  if (!actor) return;
+  if (actor.job === job) return;
+
+  const def = jobOf(job);
+  actor.job = job;
+  actor.maxHp = def.maxHp;
+  actor.hp = def.maxHp;
+  actor.atk = def.atk;
+  actor.def = def.def;
+  pushLog(state, `${actor.slot}番は${def.name}を選んだ`);
 }
 
 export function removePlayer(state: GameState, id: string): void {
@@ -213,6 +242,15 @@ function spawnMonster(state: GameState, speciesId: SpeciesId, pos: Pos): void {
     alive: true,
     fuel: 0, // モンスターは松明を持たない
     slot: 0,
+    // 以下はプレイヤー専用。型を分けないと決めてある（設計書 §3-1）ので、
+    // モンスターは使わない値で埋めておく
+    job: null,
+    level: 1,
+    exp: 0,
+    skillReadyAt: 0,
+    pendingLevels: 0,
+    offers: [],
+    perks: [],
   });
 }
 

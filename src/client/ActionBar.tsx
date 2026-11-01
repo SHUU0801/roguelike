@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { itemDefOf } from '../shared/items';
+import { jobOf } from '../shared/jobs';
 import type { GameState, Intent, ItemInstance } from '../shared/types';
 
 type Props = {
@@ -19,7 +20,10 @@ type Props = {
 
 /**
  * 画面下のアクションボタンと、持ち物の一覧。
- * ボタンは4つ1段。小さい端末で2段にすると下が画面の外に出る。
+ *
+ * 歩く操作は左下の十字ボタン（DPad.tsx）に移したので、ここは
+ * 「歩く以外」だけを持つ。十字ボタンと重ならないよう右側に寄せ、
+ * 2列2段に畳んである。1段5つに増やすと、375px で1つ 70px を割って押しにくい。
  */
 export function ActionBar({
   state,
@@ -42,6 +46,11 @@ export function ActionBar({
 
   const readyCount = state.descendReady.length;
   const aliveCount = players.filter((p) => p.alive).length;
+
+  const me = players.find((p) => p.id === myId);
+  const skill = jobOf(me?.job ?? null).skill;
+  const skillWait = me ? Math.max(0, me.skillReadyAt - state.turn) : 0;
+  const skillReady = skillWait === 0;
 
   return (
     <>
@@ -103,6 +112,17 @@ export function ActionBar({
       )}
 
       <div className="actions">
+        {/* 職業スキル。待ち時間が残っている間は残りターン数を出す。
+            「押せないボタン」ではなく「あと何ターンで押せるボタン」にする */}
+        <button
+          className={playing && skillReady ? 'skill ready' : 'skill'}
+          disabled={!playing || !skillReady}
+          onClick={() => onAction({ type: 'skill' })}
+        >
+          {skill.name}
+          {!skillReady && skillWait > 0 && <span className="cd">{skillWait}</span>}
+        </button>
+
         <button
           className={inventoryOpen ? 'on' : ''}
           disabled={!playing}
@@ -134,9 +154,6 @@ export function ActionBar({
           降りる{stairsReady && aliveCount > 1 ? ` ${readyCount}/${aliveCount}` : ''}
         </button>
 
-        <button disabled={!playing} onClick={() => onAction({ type: 'wait' })}>
-          待機
-        </button>
       </div>
     </>
   );

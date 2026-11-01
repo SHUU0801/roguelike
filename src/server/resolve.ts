@@ -15,6 +15,7 @@ import { monsterAct } from './ai';
 import { attack, damage } from './combat';
 import { applyItem } from './effects';
 import { MAX_INVENTORY, descend, inventoryOf, pushLog } from './game';
+import { useSkill } from './skills';
 import { updateVision } from './vision';
 
 /**
@@ -243,6 +244,13 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
         state,
         `${actor.slot}番が ${fallen.slot}番を起こした（最大HP -${REVIVE_COST}）`,
       );
+      return;
+    }
+
+    case 'skill': {
+      // 使えなかったときは待ち時間を進めない（skills.ts が false を返す）。
+      // 「隣に敵がいないのに撃って、空振りのまま5ターン待つ」を作らないため
+      useSkill(state, actor);
       return;
     }
 
