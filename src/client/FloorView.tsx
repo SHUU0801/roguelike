@@ -171,6 +171,27 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
       const known = visible || remembered;
       const tile = tileAt(floor, x, y);
 
+      /*
+       * 壁は描かない。床だけが闇に浮かぶ島にする。
+       *
+       * 壁の絵を並べると、盤が「床と壁の市松模様」に見えて、
+       * どこを歩けるのかが一目で分からなかった。
+       * 床しか描かなければ、**見えている形がそのまま歩ける場所**になる。
+       *
+       * 引き換えに「壁」と「まだ見ていない闇」が同じ見た目になる。
+       * 探索の手がかりとしては減るが、歩ける形は前より読める。
+       */
+      const solid = known && tile !== 'wall';
+
+      /*
+       * 島の縁。手前（南）が壁のマスにだけ、厚みの面を立てる。
+       *
+       * **「まだ見ていない」で判定してはいけない。**
+       * 最初そう書いたら、松明の届く範囲の端すべてに面が立って、
+       * 床が横縞の塊に見えた。縁は部屋の形であって、視界の形ではない。
+       */
+      const southOpen = solid && tileAt(floor, x, y + 1) === 'wall';
+
       const dir = me ? dirTo(me.pos, { x, y }) : null;
       const movable = dir !== null && tile !== 'wall' && known;
       /*
@@ -227,7 +248,8 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
           key={`${x},${y}`}
           className={[
             "cell",
-            known ? tile : "unseen",
+            solid ? tile : "unseen",
+            southOpen ? 'edge' : '',
             remembered ? "dim" : "",
             movable ? "movable" : "",
             // 何も乗っていない行き先には点を出す。「ここを押せば歩く」が1秒で分かる
@@ -239,10 +261,8 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
             .filter(Boolean)
             .join(" ")}
           style={
-            sprites && known
-              ? spriteStyle(
-                  tile === 'wall' ? theme.wall : tile === 'floor' ? theme.floor : TILE_SPRITE[tile],
-                )
+            sprites && solid
+              ? spriteStyle(tile === 'floor' ? theme.floor : TILE_SPRITE[tile])
               : undefined
           }
           onClick={
