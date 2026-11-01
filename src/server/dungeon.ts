@@ -75,14 +75,36 @@ export function createFloor(depth: number): Floor {
     carveCorridor(floor, centerOf(rooms[i - 1]), centerOf(rooms[i]));
   }
 
-  // 4. 最後の部屋に階段を置く（出現位置は最初の部屋なので、必ず離れる）
+  // 4. 最後の部屋に階段を置く。出現位置は最初の部屋なので、ふつうは離れる。
+  //
+  // ただし部屋が1つしか置けなかったときは、最初の部屋 = 最後の部屋になり、
+  // 中心に置くと出現位置とぴったり重なる。そうなると開幕から「降りる」が押せて、
+  // 1歩も歩かずにフロアを飛ばせてしまう。実際に本番で踏んだ。
   const stairsRoom = rooms[rooms.length - 1];
   if (stairsRoom) {
-    const p = centerOf(stairsRoom);
+    const spawn = spawnPos(floor);
+    let p = centerOf(stairsRoom);
+    if (p.x === spawn.x && p.y === spawn.y) p = farthestIn(stairsRoom, spawn);
     setTile(floor, p.x, p.y, 'stairs');
   }
 
   return floor;
+}
+
+/** 部屋の中で、ある点から一番遠いマス。階段が出現位置と重なるのを避けるのに使う */
+function farthestIn(room: Rect, from: Pos): Pos {
+  let best: Pos = { x: room.x, y: room.y };
+  let bestDist = -1;
+  for (let y = room.y; y < room.y + room.h; y++) {
+    for (let x = room.x; x < room.x + room.w; x++) {
+      const d = Math.abs(x - from.x) + Math.abs(y - from.y);
+      if (d > bestDist) {
+        bestDist = d;
+        best = { x, y };
+      }
+    }
+  }
+  return best;
 }
 
 /** 階段のマス。無ければ undefined */

@@ -6,6 +6,7 @@ import {
   inventoryOf,
   startGame,
 } from './src/server/game';
+import { createFloor, spawnPos } from './src/server/dungeon';
 import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn } from './src/server/resolve';
 import { updateVision } from './src/server/vision';
@@ -606,6 +607,19 @@ function putMonster(
   state.actors = state.actors.filter((a) => a.kind === 'player');
   turn(state, { type: 'skill' }); // 隣に敵がいない
   assert(me.skillReadyAt <= state.turn, '敵がいないときに撃っても待ち時間にならない');
+}
+
+// --- 35. 出現位置の上に階段が置かれない（置かれると1歩も歩かず降りられる）---
+{
+  let onStairs = 0;
+  for (let depth = 1; depth <= 5; depth++) {
+    for (let i = 0; i < 300; i++) {
+      const floor = createFloor(depth);
+      const spawn = spawnPos(floor);
+      if (floor.tiles[spawn.y * floor.width + spawn.x] === 'stairs') onStairs++;
+    }
+  }
+  assert(onStairs === 0, `1500 回生成して出現位置が階段になった回数 ${onStairs}`);
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
