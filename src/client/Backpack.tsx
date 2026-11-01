@@ -64,7 +64,7 @@ export function Backpack({
   const [held, setHeld] = useState<string | null>(null);
   const [rot, setRot] = useState(0);
   /** 指で引っ張っている間の情報。離すまで置き先を決めない */
-  const dragRef = useRef<{ id: string; moved: boolean } | null>(null);
+  const dragRef = useRef<{ id: string; moved: boolean; pointerId: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,35 +127,34 @@ export function Backpack({
   const onPointerDown = (item: ItemInstance) => (e: PointerEvent<HTMLButtonElement>) => {
     if (!mine || !playing) return;
     /*
-     * 掴みは袋（枠）側で受け取る。
+     * ここでは掴まない。持ち上げもしない。覚えるだけ。
      *
-     * マス側で setPointerCapture すると、以降の移動と離しが**そのマスにだけ**届き、
-     * 枠に付けた onPointerMove / onPointerUp が一度も呼ばれない。
-     * 実際それで引っ張っても何も起きなかった。
-     * 合成イベントでは capture が失敗することがあるので、落ちないようにしておく。
-     */
-    try {
-      gridRef.current?.setPointerCapture(e.pointerId);
-    } catch {
-      // 掴めなくても、枠の上を動かしている限りイベントは届く
-    }
-    /*
-     * ここではまだ持ち上げない。
+     * 押した瞬間に setPointerCapture すると、**そのあとの click が
+     * マスではなく捕まえた側に飛ぶ**。クリックがマスに届かないので
+     * アイテムが持ち上がらず、「使う」ボタンが出てこない。
+     * 実機で「使うボタンが押せない」と言われたのはこれ。
      *
-     * 押した瞬間に持ち上げると、指を動かさずに離したとき（＝タップ）に
-     * 続けて走る onClick が「持っているものを同じ場所に置く」と解釈して、
-     * 何も起きずに終わる。実際それでタップ操作が死んでいた。
-     * 指が動いてから持ち上げる。
+     * 持ち上げも同じ理由で遅らせる。押した瞬間に持ち上げると、
+     * タップのときに続けて走る onClick が「同じ場所に置く」と解釈して何も起きない。
+     *
+     * どちらも「指が動いてから」（onPointerMove）に寄せてある。
      */
-    dragRef.current = { id: item.id, moved: false };
+    dragRef.current = { id: item.id, moved: false, pointerId: e.pointerId };
   };
 
   const onPointerMove = (e: PointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
     if (!drag.moved) {
-      // 動き始めた。ここで初めて持ち上げる
+      // 動き始めた。ここで初めて掴んで持ち上げる。
+      // 掴むのは袋（枠）側。マス側で捕まえると、以降の移動と離しが
+      // そのマスにだけ届き、枠のハンドラが呼ばれない
       drag.moved = true;
+      try {
+        gridRef.current?.setPointerCapture(drag.pointerId);
+      } catch {
+        // 捕まえられなくても、枠の上を動かしている限りイベントは届く
+      }
       const item = carried.find((i) => i.id === drag.id);
       setHeld(drag.id);
       setRot(item?.rot ?? 0);
@@ -170,6 +169,13 @@ export function Backpack({
   const onPointerUp = (e: PointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     dragRef.current = null;
+    if (drag?.moved) {
+      try {
+        gridRef.current?.releasePointerCapture(drag.pointerId);
+      } catch {
+        // すでに外れている
+      }
+    }
     setDragging(false);
     setHover(null);
     setPtr(null);
