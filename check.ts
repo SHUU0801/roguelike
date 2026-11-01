@@ -18,6 +18,8 @@ import {
   BAG_H,
   DIR_DELTA,
   MAX_LEVEL,
+  effectiveAtk,
+  effectiveDef,
   expToNext,
   tileAt,
   type Actor,
@@ -191,31 +193,54 @@ function putMonster(
   assert(!state.items.some((i) => i.id === 'it-potion'), '使ったアイテムは消える');
 }
 
-// --- 4. 剣と盾に正負が付いている ---
+// --- 4. 装備は袋に入れている間だけ効く ---
 {
   const { state, me } = fresh();
-  const atk0 = me.atk;
-  const def0 = me.def;
-  putItem(state, 'it-sword', 'sword', { owner: 'p1'  });
-  turn(state, { type: 'useItem', instanceId: 'it-sword' });
+  state.items = [];
+  const atk0 = effectiveAtk(state, me);
+  const def0 = effectiveDef(state, me);
+
+  putItem(state, 'it-sword', 'sword', { owner: 'p1' });
   assert(
-    me.atk === atk0 + 4 && me.def === def0 - 1,
-    `剣は攻撃+4 防御-1 (攻 ${atk0}→${me.atk} / 防 ${def0}→${me.def})`,
+    effectiveAtk(state, me) === atk0 + 4 && effectiveDef(state, me) === def0 - 1,
+    `剣を持つと 攻+4 防-1 (攻 ${atk0}→${effectiveAtk(state, me)} / 防 ${def0}→${effectiveDef(state, me)})`,
+  );
+  // 素の値は動かさない。レベルアップのぶんと混ざらないようにするため
+  assert(me.atk === atk0 && me.def === def0, '素の能力値は変わらない');
+
+  // 床に置くと効果も消える。ここが「使うと消える」との一番の違い
+  turn(state, { type: 'drop', instanceId: 'it-sword' });
+  assert(
+    effectiveAtk(state, me) === atk0 && effectiveDef(state, me) === def0,
+    `袋から出すと効果も消える (攻 ${effectiveAtk(state, me)} / 防 ${effectiveDef(state, me)})`,
   );
 }
 
 // --- 4b. 盾は守りと引き換えに攻撃が下がる ---
 {
   const { state, me } = fresh();
-  const atk0 = me.atk;
-  const def0 = me.def;
-  const max0 = me.maxHp;
-  putItem(state, 'it-shield', 'shield', { owner: 'p1'  });
-  turn(state, { type: 'useItem', instanceId: 'it-shield' });
+  state.items = [];
+  const atk0 = effectiveAtk(state, me);
+  const def0 = effectiveDef(state, me);
+  putItem(state, 'it-shield', 'shield', { owner: 'p1' });
   assert(
-    me.def === def0 + 3 && me.atk === atk0 - 1 && me.maxHp === max0 + 4,
-    `盾は防御+3 最大HP+4 攻撃-1 (防 ${def0}→${me.def} / 攻 ${atk0}→${me.atk})`,
+    effectiveDef(state, me) === def0 + 3 && effectiveAtk(state, me) === atk0 - 1,
+    `盾は 防+3 攻-1 (防 ${def0}→${effectiveDef(state, me)} / 攻 ${atk0}→${effectiveAtk(state, me)})`,
   );
+}
+
+// --- 4c. 装備は使えない。袋から消えない ---
+{
+  const { state, me } = fresh();
+  state.items = [];
+  putItem(state, 'it-eq', 'shield', { owner: 'p1' });
+  turn(state, { type: 'useItem', instanceId: 'it-eq' });
+  const still = state.items.find((i) => i.id === 'it-eq');
+  assert(
+    still !== undefined && still.ownerId === 'p1',
+    '装備は「使う」で消えない（袋に入れていることが効果）',
+  );
+  void me;
 }
 
 // --- 5. 階段を降りる ---
@@ -634,9 +659,10 @@ function putMonster(
     def: 99,
   });
   turn(state, { type: 'skill', skillId: 'backstab' });
+  const power = effectiveAtk(state, me);
   assert(
-    wall.hp === 60 - me.atk,
-    `きゅうしょづきは防御99でも攻撃力ぶん通る (${60 - wall.hp} ダメージ / 攻撃力 ${me.atk})`,
+    wall.hp === 60 - power,
+    `きゅうしょづきは防御99でも攻撃力ぶん通る (${60 - wall.hp} ダメージ / 攻撃力 ${power})`,
   );
 }
 
@@ -700,11 +726,13 @@ function putMonster(
   const hpBefore = me.hp;
   turn(state, { type: 'move', dir: spot.dir });
 
-  // 協力モードのダメージは ±1 振れる（combat.ts）。通常の最大値を超えていれば2倍が効いている
+  // 協力モードのダメージは ±1 振れる（combat.ts）。通常の最大値を超えていれば2倍が効いている。
+  // 装備は袋に入っている間だけ効くので、素の atk ではなく実効値で見る
   const dealt = 99 - foe.hp;
-  const normalMax = me.atk + 1;
+  const power = effectiveAtk(state, me);
+  const normalMax = power + 1;
   assert(
-    dealt >= (me.atk - 1) * 2 && dealt > normalMax,
+    dealt >= (power - 1) * 2 && dealt > normalMax,
     `不意打ちは2倍 (${dealt} / 通常の最大 ${normalMax})`,
   );
   assert(me.hp === hpBefore, `不意打ちしたターンは殴り返されない (HP ${hpBefore} → ${me.hp})`);

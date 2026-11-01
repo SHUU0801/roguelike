@@ -3,7 +3,14 @@ import { itemDefOf } from '../shared/items';
 import { dungeonOf } from '../shared/dungeons';
 import { jobOf } from '../shared/jobs';
 import { speciesOf } from '../shared/monsters';
-import { ANIMATED, SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../shared/sprites';
+import {
+  ANIMATED,
+  SHEET,
+  SPRITE_INDEX,
+  TILE_SPRITE,
+  WALKS,
+  type SpriteId,
+} from '../shared/sprites';
 import {
   actorAt,
   dirTo,
@@ -51,6 +58,11 @@ function spriteStyle(id: SpriteId): CSSProperties {
   if (ANIMATED.has(id)) {
     style['--fx0'] = atCol(col);
     style['--fx1'] = atCol(col + 1);
+  }
+  // 歩きのコマは待機の2つ先。待機（呼吸）とは別の絵を使う
+  if (WALKS.has(id)) {
+    style['--wx0'] = atCol(col + 2);
+    style['--wx1'] = atCol(col + 3);
   }
   return style as CSSProperties;
 }
@@ -302,7 +314,12 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
   const pan = myMove?.kind === 'moved' ? myMove : null;
 
   const floorStyle = {
-    gridTemplateColumns: `repeat(${VIEW_W}, 1fr)`,
+    gridTemplateColumns: `repeat(${VIEW_W}, minmax(0, 1fr))`,
+    gridTemplateRows: `repeat(${VIEW_H}, minmax(0, 1fr))`,
+    // 盤そのものに縦横比を持たせる。横が狭ければ横に、縦が短ければ縦に合わせて縮む
+    aspectRatio: `${VIEW_W} / ${VIEW_H}`,
+    '--vw': VIEW_W,
+    '--vh': VIEW_H,
     '--cdx': pan ? pan.dx : 0,
     '--cdy': pan ? pan.dy : 0,
     '--cw': `${100 / VIEW_W}%`,

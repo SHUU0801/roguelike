@@ -1,5 +1,5 @@
-import { useState, type CSSProperties } from 'react';
-import { itemDefOf, rotated, shapeSize } from '../shared/items';
+import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { isUsable, itemDefOf, rotated, shapeSize } from '../shared/items';
 import { BAG_H, BAG_W, type GameState, type ItemInstance } from '../shared/types';
 import { TileIcon } from './Icon';
 
@@ -22,18 +22,20 @@ type Props = {
  * 数だけだと薬草6個と剣6本が同じ重さになる。形があると
  * 「剣は縦3マス食うから、もう1本は諦めて薬草を入れる」が生まれる。
  *
- * ## 操作は「持ち上げる → 置く」
+ * ## ドラッグと、タップの両方で動かせる
  *
- * ドラッグにしない。スマホで指を滑らせる操作は、
- * 盤面のスクロールや戻るジェスチャと取り合いになるうえ、
- * 1マス 40px 前後だと狙ったマスに落とせない。
+ * **指で掴んで引っ張れる。** 袋に物を詰める操作としてはこれが自然で、
+ * 形のあるアイテムをどこに嵌めるかは、動かしながら決めたい。
  *
- * アイテムを押す → 持ち上がる（使う・置く・回すが出る）
- * 空きマスを押す → そこへ移動する
- * もう一度押す   → やめる
+ * ドラッグを避けていた理由（スクロールと取り合う）は、
+ * 袋に `touch-action: none` を置いて解決している。
+ * 袋の上の指はスクロールに使われない。
  *
- * 置ける場所は持ち上げている間だけ緑で示す。
- * どこに入るか分からないまま総当たりさせない。
+ * 指を動かさずに離したときは「持ち上げた」扱いにして、
+ * 置きたいマスを押す形でも動かせる。狭い端末ではこちらのほうが確実なので、
+ * **どちらでも動く**ようにしてある。
+ *
+ * 置ける場所は掴んでいる間だけ緑で示す。どこに入るか分からないまま総当たりさせない。
  */
 export function Backpack({
   state,
@@ -46,6 +48,10 @@ export function Backpack({
 }: Props) {
   const [held, setHeld] = useState<string | null>(null);
   const [rot, setRot] = useState(0);
+  /** 指で引っ張っている間の情報。離すまで置き先を決めない */
+  const dragRef = useRef<{ id: string; moved: boolean } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   const carried = state.items.filter((i) => i.ownerId === ownerId && i.at !== null);
   const holding = carried.find((i) => i.id === held) ?? null;
@@ -63,6 +69,20 @@ export function Backpack({
     }
   }
 
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
+
+  /** その向きでそこに置けるか */
+  const fitsAt = (item: ItemInstance, at: { x: number; y: number }, r: number): boolean => {
+    const shape = rotated(itemDefOf(item.itemId).shape, r);
+    return shape.every(([dx, dy]) => {
+      const cx = at.x + dx;
+      const cy = at.y + dy;
+      if (cx < 0 || cy < 0 || cx >= BAG_W || cy >= BAG_H) return false;
+      const there = occupied.get(`${cx},${cy}`);
+      return there === undefined || there.id === item.id;
+    });
+  };
+
   /** 持ち上げているものを、その向きでそこに置けるか */
   const fits = (x: number, y: number): boolean => {
     if (!holding) return false;
@@ -74,6 +94,78 @@ export function Backpack({
       const there = occupied.get(`${cx},${cy}`);
       return there === undefined || there.id === holding.id;
     });
+  };
+
+  /** 指の位置から袋のマスを求める。掴んだ場所ではなく、いま指がある場所で判定する */
+  const cellAt = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const grid = gridRef.current;
+    if (!grid) return null;
+    const r = grid.getBoundingClientRect();
+    const x = Math.floor(((clientX - r.left) / r.width) * BAG_W);
+    const y = Math.floor(((clientY - r.top) / r.height) * BAG_H);
+    if (x < 0 || y < 0 || x >= BAG_W || y >= BAG_H) return null;
+    return { x, y };
+  };
+
+  const onPointerDown = (item: ItemInstance) => (e: PointerEvent<HTMLButtonElement>) => {
+    if (!mine || !playing) return;
+    /*
+     * 掴みは袋（枠）側で受け取る。
+     *
+     * マス側で setPointerCapture すると、以降の移動と離しが**そのマスにだけ**届き、
+     * 枠に付けた onPointerMove / onPointerUp が一度も呼ばれない。
+     * 実際それで引っ張っても何も起きなかった。
+     * 合成イベントでは capture が失敗することがあるので、落ちないようにしておく。
+     */
+    try {
+      gridRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // 掴めなくても、枠の上を動かしている限りイベントは届く
+    }
+    /*
+     * ここではまだ持ち上げない。
+     *
+     * 押した瞬間に持ち上げると、指を動かさずに離したとき（＝タップ）に
+     * 続けて走る onClick が「持っているものを同じ場所に置く」と解釈して、
+     * 何も起きずに終わる。実際それでタップ操作が死んでいた。
+     * 指が動いてから持ち上げる。
+     */
+    dragRef.current = { id: item.id, moved: false };
+  };
+
+  const onPointerMove = (e: PointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (!drag.moved) {
+      // 動き始めた。ここで初めて持ち上げる
+      drag.moved = true;
+      const item = carried.find((i) => i.id === drag.id);
+      setHeld(drag.id);
+      setRot(item?.rot ?? 0);
+      setDragging(true);
+    }
+    // 置ける場所の表示を更新するだけ。実際に動かすのは指を離したとき
+    const at = cellAt(e.clientX, e.clientY);
+    if (at) setHover(at);
+  };
+
+  const onPointerUp = (e: PointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setDragging(false);
+    setHover(null);
+    if (!drag) return;
+
+    // 指を動かさずに離した＝タップ。持ち上げたままにして、置き先を押してもらう
+    if (!drag.moved) return;
+
+    const at = cellAt(e.clientX, e.clientY);
+    if (!at) return;
+    const item = carried.find((i) => i.id === drag.id);
+    if (!item) return;
+    if (!fitsAt(item, at, rot)) return;
+    onMove(item.id, at.x, at.y, rot);
+    setHeld(null);
   };
 
   const lift = (item: ItemInstance) => {
@@ -92,10 +184,18 @@ export function Backpack({
       const here = occupied.get(`${x},${y}`);
       const isHeld = here !== undefined && here.id === holding?.id;
       const canDrop = holding !== null && fits(x, y);
+      // 指の下に来ているマス。どこに落ちるかを強く出す
+      const under =
+        dragging && hover !== null && holding !== null && fitsAt(holding, hover, rot)
+          ? rotated(itemDefOf(holding.itemId).shape, rot).some(
+              ([dx, dy]) => hover.x + dx === x && hover.y + dy === y,
+            )
+          : false;
 
       cells.push(
         <button
           key={`${x},${y}`}
+          onPointerDown={here ? onPointerDown(here) : undefined}
           /*
            * マスにも座標を持たせる。自動配置に任せると、
            * 上に重ねた絵（明示配置）を避けて流れ込み、行が勝手に増える。
@@ -107,6 +207,7 @@ export function Backpack({
             here ? 'full' : '',
             isHeld ? 'held' : '',
             canDrop ? 'drop-ok' : '',
+            under ? 'under' : '',
           ]
             .filter(Boolean)
             .join(' ')}
@@ -161,7 +262,11 @@ export function Backpack({
       </div>
 
       <div
-        className="bag-grid"
+        ref={gridRef}
+        className={`bag-grid${dragging ? ' dragging' : ''}`}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         /*
          * 行は指定しない。マス側の aspect-ratio:1 に高さを決めさせる。
          * 行を 1fr で割ると、中に置いた絵の大きさに引っ張られて
@@ -186,7 +291,19 @@ export function Backpack({
             shapeSize(itemDefOf(holding.itemId).shape)[1] && (
             <button onClick={() => setRot((r) => (r + 1) % 2)}>回す</button>
           )}
-          <button onClick={() => onUse(holding.id)}>使う</button>
+          {/* 装備は使えない。袋に入れていることが効果そのもの */}
+          {isUsable(holding.itemId) ? (
+            <button onClick={() => onUse(holding.id)}>使う</button>
+          ) : (
+            <span className="equip-chip">
+              {itemDefOf(holding.itemId).equip?.atk
+                ? `攻${itemDefOf(holding.itemId).equip?.atk ?? 0 > 0 ? '+' : ''}${itemDefOf(holding.itemId).equip?.atk}`
+                : ''}
+              {itemDefOf(holding.itemId).equip?.def
+                ? ` 防${(itemDefOf(holding.itemId).equip?.def ?? 0) > 0 ? '+' : ''}${itemDefOf(holding.itemId).equip?.def}`
+                : ''}
+            </span>
+          )}
           <button onClick={() => onDrop(holding.id)}>置く</button>
         </div>
       )}

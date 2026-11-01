@@ -59,16 +59,47 @@ body {
   font-weight: 600;
 }
 
-/* 盤の外枠。動いている間のはみ出しをここで切る */
+/*
+ * 盤の外枠。
+ *
+ * **余った場所をここが全部もらい、盤はその中に収まる。**
+ * 以前は盤の大きさを横幅だけで決めていたので、縦が足りない画面だと
+ * ログとボタン列を画面の外へ押し出していた（375x479 で実際に起きた）。
+ * 動いている間のはみ出しもここで切る。
+ */
 .floor-wrap {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  padding: 8px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 盤がこの枠の高さを参照できるようにする（下の 100cqh） */
+  container-type: size;
 }
 
-/* マス目。gridTemplateColumns は列数が可変なので JSX 側で指定する */
+/*
+ * マス目。
+ *
+ * 縦横比を盤そのものに持たせ、横も縦も 100% を超えないようにする。
+ * こうすると、横が狭ければ横に、縦が短ければ縦に合わせて縮む。
+ * マス側に aspect-ratio を持たせる書き方だと、縦が足りないときに
+ * 縮まずに溢れる。列数・行数・縦横比は JSX 側が渡す。
+ */
 .floor {
   display: grid;
   gap: 1px;
+  /*
+   * 横幅を「枠の横幅」と「枠の高さから縦横比で逆算した幅」の小さいほうにする。
+   *
+   * 縦横比だけでは大きさが決まらず、盤が 8x10 ピクセルまで潰れた。
+   * かといって height:100% と max-width を両方指定すると、
+   * 狭いときに比率が崩れてマスが長方形になる。
+   * min() で先に幅を決めてしまえば、どちらの向きでも正しく縮む。
+   */
+  width: min(100%, calc(100cqh * var(--vw) / var(--vh)));
+  max-height: 100%;
 }
 
 /*
@@ -96,7 +127,10 @@ body {
 
 .cell {
   position: relative;
-  aspect-ratio: 1;
+  /* 大きさは盤の行列が決める。ここで aspect-ratio を持つと、
+     縦が足りない画面で縮まずに溢れる */
+  min-width: 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -148,15 +182,16 @@ body {
 }
 
 .log {
-  /* 余った高さをここで吸収する。min-height:0 が無いと縮まない */
-  flex: 1;
-  min-height: 0;
   overflow: hidden;
   /* 下から積む。上から流すと、入りきらない一番新しい行が
      上下に切れた状態で残る（実機で「冒険者 → コウモリ 5ダメージ」が半分欠けた） */
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  /* 高さを決め打ちにする。伸び縮みさせると、狭い画面で行が途中で切れる。
+     3行ぶん + 余白（実機で「ダンジョンに入った」が半分欠けた） */
+  flex: none;
+  height: 82px;
   /* 左は十字ボタンのぶん空ける。空けないと、小さい端末でログが
      半透明のボタンの裏に回って読めなくなる（実測 375x667 で重なった） */
   padding: 10px 14px 10px 158px;
@@ -386,6 +421,17 @@ button.wide.primary {
   to { background-position-x: var(--fx1); }
 }
 
+/*
+ * 歩きのコマ。待機とは別の絵（足が前後に出ている2枚）を使う。
+ *
+ * 待機コマは全体を1ドット下げただけなので、呼吸には見えても歩きには見えない。
+ * 1歩のあいだに左足→右足と踏み替える。
+ */
+@keyframes walk-frames {
+  from { background-position-x: var(--wx0); }
+  to { background-position-x: var(--wx1); }
+}
+
 .sprite.anim {
   animation: idle-frames 0.8s steps(2, jump-none) infinite;
 }
@@ -485,7 +531,7 @@ button.wide.primary {
 .sprite.anim.self.moved {
   animation:
     walk 0.32s linear,
-    idle-frames 0.32s steps(2, jump-none);
+    walk-frames 0.32s steps(2, jump-none);
 }
 
 /*
@@ -494,11 +540,12 @@ button.wide.primary {
  * カメラが自分を追うので、自分は画面の上では一歩も動いていない。
  * ここで動かすと、盤の動き（.floor.panning）と二重になって
  * 行き過ぎてから戻るように見える。これがカメラの慣性の正体だった。
- * コマ送りだけ残す（足は動いてほしい）。
+ * **足のコマ送りだけは残す。** そこが歩いて見える部分なので、
+ * 待機の呼吸コマ（idle-frames）ではなく歩きコマ（walk-frames）を使う。
  */
 .sprite.self.moved,
 .sprite.anim.self.moved {
-  animation: idle-frames 0.32s steps(2, jump-none);
+  animation: walk-frames 0.32s steps(2, jump-none);
 }
 
 .sprite.lunge,
@@ -2011,3 +2058,24 @@ button.wide.primary {
 }
 
 .picker .skill-row.on { border-color: #e0c060; background: #262317; }
+
+/* 装備の補正。使えないかわりに、何が効いているかを数字で出す */
+.equip-chip {
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #79d19a;
+  background: #1d3326;
+  border: 1px solid #3f7d5a;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 袋を掴んで動かしている間は、指をスクロールに取られない */
+.bag-grid { touch-action: none; }
+.bag-grid.dragging { cursor: grabbing; }
+
+/* 指の下に来ているマス。落ちる場所を強く出す */
+.bag-cell.under {
+  background: #3f7d5a;
+  border-color: #79d19a;
+}

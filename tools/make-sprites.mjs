@@ -28,9 +28,17 @@ const LAYOUT = [
   'floor', 'wall', 'stairs', 'potion', 'bomb', 'sword', 'shield', 'scroll', 'torch',
   // 2行目: 2コマのもの（必ず対で置く）
   'hero', 'hero_b', 'goblin', 'goblin_b', 'bat', 'bat_b', 'slime', 'slime_b', 'blank',
-  // 3行目: 職業ごとの姿。全員が同じ冒険者だと、盤の上で誰が何なのか分からない
-  'warrior', 'warrior_b', 'rogue', 'rogue_b', 'mage', 'mage_b', 'cleric', 'cleric_b', 'blank',
-  // 4行目: ダンジョンごとの地形。見た目が変わらないと、どこへ潜っても同じ場所に見える
+  /*
+   * 3〜4行目: 職業ごとの姿。1職業あたり4コマ。
+   *   待機2コマ（呼吸） + 歩き2コマ（足を前後に出す）
+   * コマ送りは background-position-x を横にずらすだけなので、
+   * **4コマが折り返しをまたいではいけない。** だから1行に2職業。
+   */
+  'warrior', 'warrior_b', 'warrior_w1', 'warrior_w2',
+  'rogue', 'rogue_b', 'rogue_w1', 'rogue_w2', 'blank',
+  'mage', 'mage_b', 'mage_w1', 'mage_w2',
+  'cleric', 'cleric_b', 'cleric_w1', 'cleric_w2', 'blank',
+  // 5行目: ダンジョンごとの地形。見た目が変わらないと、どこへ潜っても同じ場所に見える
   'floor_cave', 'wall_cave', 'floor_ice', 'wall_ice', 'blank', 'blank', 'blank', 'blank', 'blank',
 ];
 
@@ -156,6 +164,66 @@ const ART = {
     'cccccccccccccccc', 'cbbbbbbbbbcbbbbc', 'cbbbbbbbbbcbbbbc', 'cccccccccccccccc',
   ],
 
+
+  /*
+   * 歩きのコマ。足を前後に出す。
+   *
+   * 待機コマ（_b）は全体を1ドット下げただけで、これは呼吸に見える。
+   * **歩いて見せるには足が入れ替わる必要がある。**
+   * 左足を出したコマと右足を出したコマを交互に出す。
+   * 上半身は1ドット上下させて、重心の移動も付ける。
+   */
+  warrior_w1: [
+    '................', '.......RR.......', '.....KKRRKK.....', '....KLLLLLLK....',
+    '....KLKKKKLK....', '....KLSSSSLK....', '.....KSSSSK.....', '....KKGGGGKK....',
+    '...KGGGGGGGGK...', '...KGLGGGGLGK...', '...KGGGGGGGGK...', '....KGGGGGGK....',
+    '...KDDK..KDK....', '..KDDK....KDK...', '..KDK......KK...', '................',
+  ],
+  warrior_w2: [
+    '................', '.......RR.......', '.....KKRRKK.....', '....KLLLLLLK....',
+    '....KLKKKKLK....', '....KLSSSSLK....', '.....KSSSSK.....', '....KKGGGGKK....',
+    '...KGGGGGGGGK...', '...KGLGGGGLGK...', '...KGGGGGGGGK...', '....KGGGGGGK....',
+    '....KDK..KDDK...', '...KDK....KDDK..', '...KK......KDK..', '................',
+  ],
+
+  rogue_w1: [
+    '................', '......KKKK......', '....KKnnnnKK....', '...KnnnnnnnnK...',
+    '...KnnSSSSnnK...', '....KSKSSKSK....', '.....KSSSSK.....', '....KKnnnnKK....',
+    '...KnnnnnnnnK...', '..KLKnnnnnnnK...', '..KWKnnYYnnnK...', '...K.KnnnnnnK...',
+    '...KDDK..KDK....', '..KDDK....KDK...', '..KDK......KK...', '................',
+  ],
+  rogue_w2: [
+    '................', '......KKKK......', '....KKnnnnKK....', '...KnnnnnnnnK...',
+    '...KnnSSSSnnK...', '....KSKSSKSK....', '.....KSSSSK.....', '....KKnnnnKK....',
+    '...KnnnnnnnnK...', '..KLKnnnnnnnK...', '..KWKnnYYnnnK...', '...K.KnnnnnnK...',
+    '....KDK..KDDK...', '...KDK....KDDK..', '...KK......KDK..', '................',
+  ],
+
+  mage_w1: [
+    '.......KK.......', '......KPPK......', '.....KPPPPK.....', '....KPPPPPPK....',
+    '..KKKKKKKKKKKK..', '....KLSSSSLK....', '....KLSKKSLK....', '.....KSSSSK.....',
+    '....KKPPPPKK....', '...KPPPPPPPPK...', '...KPPPYYPPPK...', '...KPPPPPPPPK...',
+    '...KPPK..KPPK...', '..KDDK....KDK...', '..KDK......KK...', '................',
+  ],
+  mage_w2: [
+    '.......KK.......', '......KPPK......', '.....KPPPPK.....', '....KPPPPPPK....',
+    '..KKKKKKKKKKKK..', '....KLSSSSLK....', '....KLSKKSLK....', '.....KSSSSK.....',
+    '....KKPPPPKK....', '...KPPPPPPPPK...', '...KPPPYYPPPK...', '...KPPPPPPPPK...',
+    '...KPPK..KPPK...', '...KDK....KDDK..', '...KK......KDK..', '................',
+  ],
+
+  cleric_w1: [
+    '.....YYYYYY.....', '.....KKKKKK.....', '....KLLLLLLK....', '....KLSSSSLK....',
+    '....KLSKKSLK....', '.....KSSSSK.....', '....KKWWWWKK....', '...KWWWYYWWWK...',
+    '...KWWWYYWWWK...', '...KWYYYYYYWK...', '...KWWWYYWWWK...', '....KWWYYWWK....',
+    '...KWWK..KWWK...', '..KDDK....KDK...', '..KDK......KK...', '................',
+  ],
+  cleric_w2: [
+    '.....YYYYYY.....', '.....KKKKKK.....', '....KLLLLLLK....', '....KLSSSSLK....',
+    '....KLSKKSLK....', '.....KSSSSK.....', '....KKWWWWKK....', '...KWWWYYWWWK...',
+    '...KWWWYYWWWK...', '...KWYYYYYYWK...', '...KWWWYYWWWK...', '....KWWYYWWK....',
+    '...KWWK..KWWK...', '...KDK....KDDK..', '...KK......KDK..', '................',
+  ],
 
   blank: [
     '................', '................', '................', '................',

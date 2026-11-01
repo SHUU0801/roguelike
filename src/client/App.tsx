@@ -18,6 +18,8 @@ import {
   FUEL_DANGER,
   FUEL_WARN,
   MAX_LEVEL,
+  effectiveAtk,
+  effectiveDef,
   expToNext,
   itemAt,
   tileAt,
@@ -329,9 +331,11 @@ export function App() {
         <span>
           {me ? `HP ${me.hp}/${me.maxHp}` : '—'}
           {me && (
+            // 装備ぶんを足した実際の値を出す。素の値を出すと、
+            // 剣を持っているのに数字が変わらず「効いていない」ように見える
             <span className="stats">
               {' '}
-              攻{me.atk} 防{me.def}
+              攻{effectiveAtk(state, me)} 防{effectiveDef(state, me)}
             </span>
           )}
         </span>

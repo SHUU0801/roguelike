@@ -1,6 +1,7 @@
 import { itemDefOf } from '../shared/items';
 import {
   FUEL_REFILL,
+  effectiveDef,
   isHostile,
   tileAt,
   type Actor,
@@ -15,23 +16,26 @@ import { pushLog } from './game';
 const BOMB_DAMAGE = 10;
 const POTION_HEAL = 10;
 
-// 剣と盾に正負を付ける（03_改善構成.md §1-4）。
-// デメリットが1つ付くだけで「拾ったら使う」が「今どっちが要るか」に変わる。
-// 装備欄を作らずに済むので、スマホの画面を1ピクセルも増やさない。
-const SWORD_ATK = 4;
-const SWORD_DEF_COST = 1;
-const SHIELD_DEF = 3;
-const SHIELD_HP = 4;
-const SHIELD_ATK_COST = 1;
+// 剣と盾の数値は shared/items.ts の equip に移した（袋に入れている間だけ効く）
 
 /**
  * アイテムを使う。使ったアイテムは消える。
  *
- * 剣と盾は「装備」ではなく、使うと能力が上がりっぱなしになる形にした。
- * 装備欄を作るとスマホの画面にもう1階層必要になるので、v0 では持たない。
+ * **剣と盾はここに来ない。** 袋に入れている間だけ効く装備にした
+ * （shared/items.ts の equip）。
+ * 以前は「使う」と消えて能力が上がりっぱなしで、
+ * 使った瞬間に袋が空くので**持っているほうが損**だった。
+ * 装備欄は作らない。袋そのものが装備欄になっている。
  */
 export function applyItem(state: GameState, actor: Actor, item: ItemInstance): void {
   const def = itemDefOf(item.itemId);
+
+  // 装備は使えない。袋に入れていることが効果そのもの
+  if (def.equip) {
+    pushLog(state, `${def.name}は身に着けているだけで効いている`);
+    return;
+  }
+
   pushLog(state, `${def.name}を使った`);
 
   switch (item.itemId) {
@@ -59,24 +63,8 @@ export function applyItem(state: GameState, actor: Actor, item: ItemInstance): v
       for (const target of targets) {
         // 防御力を効かせる。以前は固定ダメージで、盾を積む意味が無かった。
         // 乱数は入れないので対戦でもそのまま使える（pvpSafe: true）
-        damage(state, target, Math.max(1, BOMB_DAMAGE - target.def));
+        damage(state, target, Math.max(1, BOMB_DAMAGE - effectiveDef(state, target)));
       }
-      break;
-    }
-
-    case 'sword': {
-      actor.atk += SWORD_ATK;
-      actor.def = Math.max(0, actor.def - SWORD_DEF_COST);
-      pushLog(state, `攻撃力 +${SWORD_ATK}、防御力 -${SWORD_DEF_COST}`);
-      break;
-    }
-
-    case 'shield': {
-      actor.def += SHIELD_DEF;
-      actor.maxHp += SHIELD_HP;
-      actor.hp += SHIELD_HP;
-      actor.atk = Math.max(1, actor.atk - SHIELD_ATK_COST);
-      pushLog(state, `防御力 +${SHIELD_DEF}、最大HP +${SHIELD_HP}、攻撃力 -${SHIELD_ATK_COST}`);
       break;
     }
 

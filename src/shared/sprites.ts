@@ -16,7 +16,7 @@ export const SHEET = {
   url: '/sprites/tiles.png',
   tile: 16,
   cols: 9,
-  rows: 4,
+  rows: 5,
 } as const;
 
 export type SpriteId =
@@ -63,17 +63,30 @@ export const SPRITE_INDEX: Record<SpriteId, number> = {
   goblin: 11,
   bat: 13,
   slime: 15,
-  // 3行目
+  // 3〜4行目。1職業4コマ（待機2 + 歩き2）で、折り返しをまたがないよう1行2職業
   warrior: 18,
-  rogue: 20,
-  mage: 22,
-  cleric: 24,
-  // 4行目
-  floor_cave: 27,
-  wall_cave: 28,
-  floor_ice: 29,
-  wall_ice: 30,
+  rogue: 22,
+  mage: 27,
+  cleric: 31,
+  // 5行目
+  floor_cave: 36,
+  wall_cave: 37,
+  floor_ice: 38,
+  wall_ice: 39,
 };
+
+/**
+ * 歩きのコマ。index + 2 と index + 3 が歩きの2コマ。
+ *
+ * 待機コマ（index + 1）は全体を1ドット下げただけで、これは呼吸に見える。
+ * **歩いて見せるには足が入れ替わる必要がある。**
+ */
+export const WALKS: ReadonlySet<SpriteId> = new Set<SpriteId>([
+  'warrior',
+  'rogue',
+  'mage',
+  'cleric',
+]);
 
 /** 2コマのアニメーションを持つもの。2コマ目は index + 1 */
 export const ANIMATED: ReadonlySet<SpriteId> = new Set<SpriteId>([

@@ -11,6 +11,7 @@ import {
   DIR_DELTA,
   actorAt,
   addEffect,
+  effectiveAtk,
   hasEffect,
   isHostile,
   tileAt,
@@ -157,7 +158,7 @@ function backstab(state: GameState, actor: Actor): boolean {
   }
   // 防御を無視するのがこのわざの存在理由。
   // スライム（防御3）のような「殴ってもほとんど減らない敵」の答えになる
-  damage(state, target, actor.atk + focusBonus(actor), actor);
+  damage(state, target, effectiveAtk(state, actor) + focusBonus(actor), actor);
   return true;
 }
 

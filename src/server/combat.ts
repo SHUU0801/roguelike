@@ -1,6 +1,12 @@
 import { speciesOf } from '../shared/monsters';
 import { BLESS_BONUS } from '../shared/skills';
-import { hasEffect, type Actor, type GameState } from '../shared/types';
+import {
+  effectiveAtk,
+  effectiveDef,
+  hasEffect,
+  type Actor,
+  type GameState,
+} from '../shared/types';
 import { pushLog } from './game';
 import { applyMend, awardExp, expFor } from './levels';
 import { randInt } from './random';
@@ -22,6 +28,7 @@ export function calcDamage(
   defender: Actor,
   opts: { pvp: boolean },
   turn?: number,
+  state?: GameState,
 ): number {
   // 乱数を加算ではなく振れ幅にする。
   // 旧: max(1, atk-def) + randInt(0,2) だと、加算項が def で減らないため
@@ -29,7 +36,10 @@ export function calcDamage(
   // この形なら def が最後まで効き、対戦の確定値が協力の中央値と一致する。
   // 挑発やまもりのうたの上乗せ。turn が無い呼び方（単体テスト）では素の防御だけ見る
   const bonus = turn === undefined || !hasEffect(defender, 'guard', turn) ? 0 : BLESS_BONUS + 1;
-  const base = attacker.atk - (defender.def + bonus);
+  // 装備は袋に入っている間だけ効く。state が無い呼び方（単体テスト）では素の値
+  const atk = state ? effectiveAtk(state, attacker) : attacker.atk;
+  const def = state ? effectiveDef(state, defender) : defender.def;
+  const base = atk - (def + bonus);
   if (opts.pvp) return Math.max(1, base); // 対戦: 確定値
   return Math.max(1, base + randInt(-1, 1)); // 協力: 少し振れてドラマになる
 }
@@ -83,7 +93,7 @@ export function attack(
   defender: Actor,
   opts: { pvp: boolean } = { pvp: false },
 ): void {
-  damage(state, defender, calcDamage(attacker, defender, opts, state.turn), attacker);
+  damage(state, defender, calcDamage(attacker, defender, opts, state.turn, state), attacker);
 }
 
 /**
@@ -96,7 +106,7 @@ export function attack(
 export const SNEAK_MULTIPLIER = 2;
 
 export function sneakAttack(state: GameState, attacker: Actor, defender: Actor): void {
-  const base = calcDamage(attacker, defender, { pvp: false }, state.turn);
+  const base = calcDamage(attacker, defender, { pvp: false }, state.turn, state);
   pushLog(state, '背後から不意を突いた！');
   damage(state, defender, base * SNEAK_MULTIPLIER, attacker);
 }

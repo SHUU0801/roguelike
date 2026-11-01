@@ -4,6 +4,7 @@
  */
 
 import type { DungeonId } from './dungeons';
+import { itemDefOf } from './items';
 import type { JobId } from './jobs';
 import type { PerkId } from './perks';
 import type { EffectId, SkillId } from './skills';
@@ -258,6 +259,37 @@ export const REVIVE_COST = 4;
 export function tileAt(floor: Floor, x: number, y: number): TileKind {
   if (x < 0 || y < 0 || x >= floor.width || y >= floor.height) return 'wall';
   return floor.tiles[y * floor.width + x];
+}
+
+/**
+ * 袋に入れている装備ぶんを足した実際の能力。
+ *
+ * **装備は袋に入っている間だけ効く**（shared/items.ts）。
+ * 以前は「使う」と消えて能力が上がりっぱなしで、
+ * 使った瞬間に袋が空くので持っているほうが損だった。
+ * 袋のマスを食い続けるからこそ、剣を2本持つか薬草を入れるかが判断になる。
+ *
+ * 戦闘も画面もここを通す。素の値（actor.atk）を直接見てはいけない。
+ */
+export function equipBonus(state: GameState, actorId: string): { atk: number; def: number } {
+  let atk = 0;
+  let def = 0;
+  for (const item of state.items) {
+    if (item.ownerId !== actorId || item.at === null) continue;
+    const e = itemDefOf(item.itemId).equip;
+    if (!e) continue;
+    atk += e.atk ?? 0;
+    def += e.def ?? 0;
+  }
+  return { atk, def };
+}
+
+export function effectiveAtk(state: GameState, actor: Actor): number {
+  return Math.max(1, actor.atk + equipBonus(state, actor.id).atk);
+}
+
+export function effectiveDef(state: GameState, actor: Actor): number {
+  return Math.max(0, actor.def + equipBonus(state, actor.id).def);
 }
 
 /** その状態が今効いているか。値は「このターンまで」 */
