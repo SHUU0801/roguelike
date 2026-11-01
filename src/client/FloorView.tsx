@@ -249,7 +249,6 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
           className={[
             "cell",
             solid ? tile : "unseen",
-            southOpen ? 'edge' : '',
             remembered ? "dim" : "",
             movable ? "movable" : "",
             // 何も乗っていない行き先には点を出す。「ここを押せば歩く」が1秒で分かる
@@ -273,6 +272,14 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
                 : undefined
           }
         >
+          {/*
+            島の縁の厚み。
+            擬似要素（::after）ではなく本物の要素にしてある。
+            ::after は行き先の点（.cell.vacant::after）がすでに使っていて、
+            同じマスが両方になると片方しか出ない。
+          */}
+          {southOpen && <span className="slab" />}
+
           {/*
             盤を寝かせてあるので、上に乗るものはここで起こす（.stand）。
             起こさないと人も床と一緒に潰れて、真上から見た絵に戻ってしまう。
@@ -314,10 +321,20 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
                     .join(' ')}
                   style={{
                     ...(isPlayer
-                      ? // 殴りかかっているあいだだけ攻撃の絵にする
+                      ? /*
+                         * 立ち姿に踏み込みのコマ（dash）を使う。
+                         *
+                         * 待機のコマ（idle）は4職業とも**正面を向いた絵**で、
+                         * 左右に反転しても外套と武器の位置が入れ替わるだけ。
+                         * 「右へ歩いたのに右を向かない」と言われたのはこれ。
+                         * 踏み込みのコマだけが4職業とも横を向いていて、
+                         * しかも光の演出が焼き込まれていない。
+                         *
+                         * 殴りかかっているあいだは攻撃の絵にする。
+                         */
                         jobStyle(
                           playerJob,
-                          effect?.kind === 'lunge' ? POSE.attack : POSE.idle,
+                          effect?.kind === 'lunge' ? POSE.attack : POSE.dash,
                           occupant.facing,
                         )
                       : spriteStyle(topSprite as SpriteId)),
@@ -421,7 +438,14 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
     // 外側で切る。盤が動く以上、動いている間ははみ出す。
     // 切らないとヘッダーやログの上に盤が乗る
     <div className="floor-wrap">
-      <div className={pan ? 'floor panning' : 'floor'} style={floorStyle}>
+      {/*
+        盤の入れ物。**クラス名を floor にしてはいけない。**
+        マス1つ1つも地形の種類をクラスにしていて、床のマスは class="cell floor"。
+        入れ物まで floor だと `.floor { transform: ... }` が
+        **マス全部にも掛かって**、1マスずつ別々に回って縮み、
+        地面に隙間が空いた。見た目の不具合の正体がこれだった。
+      */}
+      <div className={pan ? 'board panning' : 'board'} style={floorStyle}>
         {cells}
       </div>
     </div>

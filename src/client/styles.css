@@ -87,9 +87,16 @@ body {
  * マス側に aspect-ratio を持たせる書き方だと、縦が足りないときに
  * 縮まずに溢れる。列数・行数・縦横比は JSX 側が渡す。
  */
-.floor {
+/*
+ * マスの間に隙間を空けない。
+ *
+ * 1px の溝と角丸があると、地面が「並べた板」に見えて立体感が出ない。
+ * 隙間を詰めると一枚の地面になる。
+ * マスの境目は床の模様と、行き先の印（内側の線）で分かる。
+ */
+.board {
   display: grid;
-  gap: 1px;
+  gap: 0;
   /*
    * 横幅を「枠の横幅」と「枠の高さから縦横比で逆算した幅」の小さいほうにする。
    *
@@ -121,7 +128,7 @@ body {
   }
 }
 
-.floor.panning {
+.board.panning {
   animation: pan 0.32s linear;
 }
 
@@ -134,7 +141,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  /* 角を丸めない。丸めると隣のマスとの間に欠けができる */
+  border-radius: 0;
   /* 絵文字はスプライトシートが読めなかったときの保険。少し大きめにする */
   font-size: clamp(18px, 7vw, 30px);
   line-height: 1;
@@ -2504,7 +2512,7 @@ button.wide.danger {
   perspective-origin: 50% 44%;
 }
 
-.floor {
+.board {
   transform-style: preserve-3d;
   transform: var(--board);
 }
@@ -2547,8 +2555,7 @@ button.wide.danger {
   --slab: 18px;
 }
 
-.cell.edge::after {
-  content: '';
+.cell .slab {
   position: absolute;
   left: 0;
   right: 0;
@@ -2572,7 +2579,7 @@ button.wide.danger {
 }
 
 /* 覚えているだけのところは薄く。いま見えている縁を目立たせる */
-.cell.edge.dim::after {
+.cell.dim .slab {
   opacity: 0.45;
 }
 
