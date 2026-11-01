@@ -1196,5 +1196,26 @@ function putMonster(
   assert(f.tiles[3 * f.width + 6] === 'floor', 'その壁の通り道は y=3');
 }
 
+// --- 56. 横に歩くと向きが変わる ---
+{
+  const { state, me } = fresh();
+  clearFloor(state);
+  assert(me.facing === 'e', `最初は右を向く (${me.facing})`);
+
+  const west = { x: me.pos.x - 1, y: me.pos.y };
+  if (tileAt(state.floor, west.x, west.y) !== 'wall') {
+    turn(state, { type: 'move', dir: 'w' });
+    assert(me.facing === 'w', `左へ歩くと左を向く (${me.facing})`);
+  }
+
+  /*
+   * 上下では向きを変えない。
+   * 変えると北へ1歩あるくだけで絵が既定の右向きに戻る。
+   */
+  const before = me.facing;
+  turn(state, { type: 'move', dir: 'n' });
+  assert(me.facing === before, `上下では向きが変わらない (${before} → ${me.facing})`);
+}
+
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
 process.exitCode = failed === 0 ? 0 : 1;

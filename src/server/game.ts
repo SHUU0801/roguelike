@@ -204,8 +204,9 @@ export function addPlayer(state: GameState, id: string): void {
     def: def.def,
     alive: true,
     fuel: FUEL_START,
+    // 絵は右を向いて描かれている。最初から裏返っていると不自然
+    facing: 'e',
     slot,
-    facing: 'n',
     aware: true, // プレイヤーは常に「起きている」。向きと気づきは敵だけの仕組み
     effects: {},
     name: '',

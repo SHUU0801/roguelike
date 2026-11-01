@@ -5,6 +5,7 @@ import { jobOf, type JobId } from '../shared/jobs';
 import { speciesOf } from '../shared/monsters';
 import {
   ANIMATED,
+  FLIP_OFFSET,
   JOB_SHEET,
   POSE,
   PORTRAIT_ROW,
@@ -80,10 +81,16 @@ function spriteStyle(id: SpriteId): CSSProperties {
  * 切り出し方（% 指定）とコマの渡し方（--fx / --wx）は
  * spriteStyle と同じにしてある。CSS 側は区別せずに動かせる。
  */
-function jobStyle(job: JobId | null, pose: number = POSE.idle): CSSProperties {
+function jobStyle(
+  job: JobId | null,
+  pose: number = POSE.idle,
+  facing: Dir = 'e',
+): CSSProperties {
   // 職業を選ぶ前の人も居る。jobOf と同じで、既定は戦士
   const row = PORTRAIT_ROW[job ?? 'warrior'];
-  const atCol = (c: number) => `${(c / Math.max(1, JOB_SHEET.cols - 1)) * 100}%`;
+  // 左を向いているときは反転した一式（シートの右半分）を使う
+  const flip = facing === 'w' ? FLIP_OFFSET : 0;
+  const atCol = (c: number) => `${((c + flip) / Math.max(1, JOB_SHEET.cols - 1)) * 100}%`;
 
   return {
     backgroundImage: `url(${JOB_SHEET.url})`,
@@ -282,7 +289,11 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
                   style={{
                     ...(isPlayer
                       ? // 殴りかかっているあいだだけ攻撃の絵にする
-                        jobStyle(playerJob, effect?.kind === 'lunge' ? POSE.attack : POSE.idle)
+                        jobStyle(
+                          playerJob,
+                          effect?.kind === 'lunge' ? POSE.attack : POSE.idle,
+                          occupant.facing,
+                        )
                       : spriteStyle(topSprite as SpriteId)),
                     ...effectStyle(effect),
                   }}
@@ -292,7 +303,10 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
 
           {/* 倒れた仲間。薄く寝かせて描く */}
           {sprites && fallen && (
-            <span className="sprite fallen" style={jobStyle(fallen.job, POSE.down)} />
+            <span
+              className="sprite fallen"
+              style={jobStyle(fallen.job, POSE.down, fallen.facing)}
+            />
           )}
 
           {/* 誰が誰かの目印。全員が同じ見た目なので番号が要る */}

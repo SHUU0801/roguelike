@@ -329,6 +329,22 @@ function resampleInto(img, isInk, box, tile, pad) {
   return out;
 }
 
+/** 左右を反転した1コマを作る */
+function mirrorCell(px, tile) {
+  const out = new Uint8Array(px.length);
+  for (let y = 0; y < tile; y++) {
+    for (let x = 0; x < tile; x++) {
+      const s = (y * tile + x) * 4;
+      const d = (y * tile + (tile - 1 - x)) * 4;
+      out[d] = px[s];
+      out[d + 1] = px[s + 1];
+      out[d + 2] = px[s + 2];
+      out[d + 3] = px[s + 3];
+    }
+  }
+  return out;
+}
+
 function sheetFrom(cells, tile, cols, rows) {
   const W = cols * tile;
   const H = rows * tile;
@@ -418,7 +434,20 @@ function main() {
         portraits.push({ row, col, px: resampleInto(img, pc.isInk, pc.box, PORTRAIT_TILE, 4) });
         got++;
       }
-      if (sc) boards.push({ row, col, px: resampleInto(img, sc.isInk, sc.box, BOARD_TILE, 0) });
+      if (sc) {
+        /*
+         * 盤の上の姿は**左右の向きが要る。**
+         * 絵は右を向いて描かれている（斬撃も踏み込みも右へ出る）ので、
+         * 反転した一式を右半分に足しておく。
+         *
+         * CSS の transform で裏返す手もあるが、拡縮や移動の
+         * アニメーションが同じ transform を使っていて喧嘩する。
+         * **絵を2通り持つほうが、動きの仕組みを壊さない。**
+         */
+        const cell = resampleInto(img, sc.isInk, sc.box, BOARD_TILE, 0);
+        boards.push({ row, col, px: cell });
+        boards.push({ row, col: col + POSES, px: mirrorCell(cell, BOARD_TILE) });
+      }
     }
     console.log(`${job}: ${got} ポーズ`);
   });
@@ -435,7 +464,7 @@ function main() {
   writeFileSync(resolve(dir, 'portraits.png'), encodePng(p.W, p.H, p.out));
   console.log(`portraits.png （${p.W}x${p.H}）`);
 
-  const b = sheetFrom(boards, BOARD_TILE, POSES, JOBS.length);
+  const b = sheetFrom(boards, BOARD_TILE, POSES * 2, JOBS.length);
   writeFileSync(resolve(dir, 'jobs.png'), encodePng(b.W, b.H, b.out));
   console.log(`jobs.png （${b.W}x${b.H}）`);
 }

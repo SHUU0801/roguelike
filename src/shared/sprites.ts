@@ -147,9 +147,19 @@ export const JOB_SHEET = {
    * 盤のマスは実測 39px なので、16 に縮めると人だけ潰れて読めなかった。
    */
   tile: 32,
-  cols: 8,
+  /**
+   * 左半分（0-7）が右向き、右半分（8-15）が左向き。
+   *
+   * 絵は右を向いて描かれている（斬撃も踏み込みも右へ出る）。
+   * CSS の transform で裏返す手もあるが、拡縮や移動のアニメーションが
+   * 同じ transform を使っていて喧嘩する。**絵を2通り持つほうが安全。**
+   */
+  cols: 16,
   rows: 4,
 } as const;
+
+/** 左を向いているときの列のずれ */
+export const FLIP_OFFSET = 8;
 
 /** 行番号。職業の並び順そのもの。立ち絵と盤で共通 */
 export const PORTRAIT_ROW: Record<'warrior' | 'rogue' | 'mage' | 'cleric', number> = {
