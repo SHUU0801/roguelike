@@ -12,7 +12,8 @@
     "check": "tsx check.ts",
     "sprites": "node tools/make-sprites.mjs",
     "start": "tsx src/server/index.ts",
-    "preview": "npm run build && npm start"
+    "preview": "npm run build && npm start",
+    "art": "node tools/import-art.mjs"
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.9",
