@@ -2333,3 +2333,47 @@ button.wide.danger {
 /* 外している装備。マスは食っているが効いていないことを見せる */
 .bag-piece.off { opacity: 0.4; border-style: dashed; }
 .equip-chip.off { color: #9aa4b2; background: #222730; border-color: #39404a; }
+
+/* --- やって覚えるチュートリアル --- */
+
+/*
+ * いまやることを1行で。盤の上に置くと手元から目が遠いので、
+ * 行動ボタンに近い下寄り——ではなく、盤のすぐ上に置く。
+ * 下に置くと指と重なって、押そうとしたところに文字がある。
+ */
+.tutorial-step {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #e8e4d0;
+  background: #2c2a1c;
+  border: 1px solid #5c552f;
+  border-radius: 8px;
+}
+
+.tutorial-text { flex: 1; min-width: 0; }
+
+.tutorial-count {
+  font-size: 12px;
+  color: #b0a87a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* まだ終えていない人に、ここを押してほしいと伝える点 */
+.icon-btn.nudge { position: relative; }
+
+.icon-btn.nudge::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: #e0a030;
+  border: 1px solid #171b21;
+  border-radius: 50%;
+}

@@ -4,6 +4,7 @@ import { DPad } from './DPad';
 import { FloorView } from './FloorView';
 import { Icon } from './Icon';
 import { GameMenu } from './GameMenu';
+import { TutorialGuide } from './Tutorial';
 import { HowTo } from './HowTo';
 import { LevelUp } from './LevelUp';
 import { Lobby } from './Lobby';
@@ -12,7 +13,7 @@ import { PartyBar } from './PartyBar';
 import { dirBetween, findPath, shouldStop } from './travel';
 import { goToDungeon, useGame } from './useGame';
 import { recordRun, loadProfile } from './profile';
-import { bringHome, markCleared, rememberSkills, spendFromStash } from './stash';
+import { bringHome, markCleared, markTutorialDone, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
 import { sfx } from './sfx';
 import type { ItemId } from '../shared/items';
@@ -202,6 +203,17 @@ export function App() {
     const carried = conn.state.items
       .filter((i) => i.ownerId === conn.myId && i.at !== null)
       .map((i) => i.itemId as ItemId);
+
+    /*
+     * チュートリアルは**何も払い出さない。**
+     * 経験も倉庫も踏破数も動かさない。
+     * 動かすと、剣が1本もらえる練習場を何度でも回せてしまう。
+     */
+    if (conn.state.dungeon === 'tutorial') {
+      if (phase === 'won') markTutorialDone();
+      broughtRef.current = [];
+      return;
+    }
 
     // 遊んだ量を記録する。死んでも深さぶんは残る（profile.ts）
     recordRun(conn.state.floor.depth, phase === 'won');
@@ -409,10 +421,29 @@ export function App() {
 
       <PartyBar state={state} myId={myId} />
 
+      {/* やることを1行で出す。チュートリアルのときだけ */}
+      {state.dungeon === 'tutorial' && state.phase === 'playing' && me && (
+        <TutorialGuide state={state} me={me} />
+      )}
+
       {state.phase === 'won' && (
         <div className="banner win">
-          <span>踏破した！ {state.turn} ターン</span>
-          <button onClick={() => location.reload()}>もう一度</button>
+          {/*
+            チュートリアルを「踏破した！」とは呼ばない。練習に記録は要らない。
+            終わったら本編へ送り出す。ここで「もう一度」を出すと、
+            覚えた人をもう一度チュートリアルに戻すことになる。
+          */}
+          {state.dungeon === 'tutorial' ? (
+            <>
+              <span>ひととおり覚えた！</span>
+              <button onClick={() => (location.href = '/')}>ホームへ</button>
+            </>
+          ) : (
+            <>
+              <span>踏破した！ {state.turn} ターン</span>
+              <button onClick={() => location.reload()}>もう一度</button>
+            </>
+          )}
         </div>
       )}
       {state.phase === 'lost' && (

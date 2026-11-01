@@ -28,6 +28,13 @@ import { SKILLS, type SkillId } from '../shared/skills';
 const STASH_KEY = 'roguelike:stash';
 const CLEARED_KEY = 'roguelike:cleared';
 const SKILLS_KEY = 'roguelike:skills';
+/**
+ * チュートリアルを終えたか。
+ *
+ * 踏破済み（CLEARED_KEY）には入れない。
+ * 入れると「3つ中1つ踏破」と出てしまい、遊ぶ場所を1つ潰したことになる。
+ */
+const TUTORIAL_KEY = 'roguelike:tutorial-done';
 
 function read(key: string): string[] {
   try {
@@ -116,6 +123,24 @@ export function rememberSkills(job: JobId, skills: SkillId[]): void {
   const now = new Set([...(all[job] ?? []), ...skills]);
   try {
     localStorage.setItem(SKILLS_KEY, JSON.stringify({ ...all, [job]: [...now] }));
+  } catch {
+    // 覚えられなくても遊べる
+  }
+}
+
+
+export function tutorialDone(): boolean {
+  try {
+    return localStorage.getItem(TUTORIAL_KEY) === '1';
+  } catch {
+    // 読めないときは「まだ」でいい。もう一度やらせるほうが害が小さい
+    return false;
+  }
+}
+
+export function markTutorialDone(): void {
+  try {
+    localStorage.setItem(TUTORIAL_KEY, '1');
   } catch {
     // 覚えられなくても遊べる
   }

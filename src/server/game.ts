@@ -14,7 +14,7 @@ import {
   type Pos,
 } from '../shared/types';
 import { putIn } from './backpack';
-import { createFloor, scatterPositions, spawnPos } from './dungeon';
+import { createFloor, createTutorialFloor, scatterPositions, spawnPos } from './dungeon';
 import { pick, randInt } from './random';
 
 /*
@@ -46,7 +46,7 @@ export function createInitialGame(dungeon: DungeonId = 'ruin'): GameState {
     phase: 'lobby',
     dungeon,
     turn: 0,
-    floor: createFloor(1),
+    floor: dungeon === 'tutorial' ? createTutorialFloor() : createFloor(1),
     actors: [],
     items: [],
     log: ['仲間が来るのを待っている'],
@@ -55,8 +55,45 @@ export function createInitialGame(dungeon: DungeonId = 'ruin'): GameState {
     waitingFor: [],
     deadlineAt: null,
   };
-  populateFloor(state);
+  if (dungeon === 'tutorial') seedTutorial(state);
+  else populateFloor(state);
   return state;
+}
+
+/**
+ * チュートリアルの中身。**位置も中身も固定。**
+ *
+ * 部屋ごとに覚えることを1つだけ置く。2つ置くと、
+ * どちらをやれと言われているのか分からなくなる。
+ *
+ *   右上 コウモリ1匹   ぶつかると攻撃になる
+ *   右下 薬草1つ       乗ると拾う → 持ち物から使う
+ *   左下 剣1本 + 階段  袋に入れているだけで攻撃が上がる → 降りて終わり
+ *
+ * 敵はコウモリだけ。一番弱く、倒せる手応えを最初に置くため。
+ */
+function seedTutorial(state: GameState): void {
+  const put = (itemId: ItemId, pos: Pos) => {
+    state.items.push({ id: newId('i'), itemId, pos, ownerId: null, at: null, rot: 0 });
+  };
+
+  /*
+   * **置く場所は、通らないと先へ進めないマスにする。**
+   *
+   * 最初は部屋の真ん中に置いていた。自分で試したら、
+   * 部屋の端を歩いて薬草を踏まずに次の部屋へ抜けてしまい、
+   * 「薬草を拾え」と出たまま先に進めなくなった。
+   * チュートリアルで迷子になるのでは意味がない。
+   */
+
+  // 出発点の真東。最初に右へ歩くと必ずぶつかる
+  spawnMonster(state, 'bat', { x: 9, y: 3 });
+
+  // 右上から右下へ降りる穴（9,6）のすぐ下。降りたら必ず乗る
+  put('potion', { x: 9, y: 7 });
+
+  // 右下から左下へ入って最初のマス。横切れば必ず乗る
+  put('sword', { x: 5, y: 9 });
 }
 
 /**

@@ -206,3 +206,66 @@ export function scatterPositions(floor: Floor, count: number): Pos[] {
 
   return shuffle(candidates).slice(0, count);
 }
+
+/*
+ * ────────── チュートリアル ──────────
+ */
+
+/**
+ * チュートリアルの地形。**毎回まったく同じ。**
+ *
+ * ランダムだと「次はここで殴る」と教えられない。
+ * 順路を1本にして、部屋ごとに覚えることを1つだけ置く。
+ *
+ *   左上 = 出発    右上 = たたかう
+ *   右下 = ひろう・つかう    左下 = そうび・おりる
+ *
+ * 絵のとおりに読める形で持つ。座標の表より間違いに気づきやすい。
+ *   # 壁 / . 床 / > 階段
+ */
+const TUTORIAL_MAP = [
+  '#############',
+  '#.....#.....#',
+  '#.....#.....#',
+  '#...........#',
+  '#.....#.....#',
+  '#.....#.....#',
+  '#########.###',
+  '#.....#.....#',
+  '#.....#.....#',
+  '#...........#',
+  '#.....#.....#',
+  '#..>..#.....#',
+  '#############',
+];
+
+/** チュートリアルの4部屋。順路の並びで持つ（rooms[0] が出発点） */
+export const TUTORIAL_ROOMS: Rect[] = [
+  { x: 1, y: 1, w: 5, h: 5 }, // 左上・出発
+  { x: 7, y: 1, w: 5, h: 5 }, // 右上・たたかう
+  { x: 7, y: 7, w: 5, h: 5 }, // 右下・ひろう
+  { x: 1, y: 7, w: 5, h: 5 }, // 左下・そうび／階段
+];
+
+export function createTutorialFloor(): Floor {
+  const height = TUTORIAL_MAP.length;
+  const width = TUTORIAL_MAP[0].length;
+  const tiles: TileKind[] = [];
+
+  for (const row of TUTORIAL_MAP) {
+    if (row.length !== width) throw new Error('チュートリアルの地図の幅が揃っていない');
+    for (const ch of row) {
+      tiles.push(ch === '#' ? 'wall' : ch === '>' ? 'stairs' : 'floor');
+    }
+  }
+
+  return {
+    depth: 1,
+    width,
+    height,
+    tiles,
+    rooms: TUTORIAL_ROOMS,
+    seen: new Array<boolean>(width * height).fill(false),
+    visible: new Array<boolean>(width * height).fill(false),
+  };
+}

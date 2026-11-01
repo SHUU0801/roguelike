@@ -7,6 +7,7 @@ import {
   startGame,
 } from './src/server/game';
 import { createFloor, spawnPos } from './src/server/dungeon';
+import { dungeonOf } from './src/shared/dungeons';
 import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
 import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn, retireCleanup } from './src/server/resolve';
@@ -1133,6 +1134,55 @@ function putMonster(
   // 代入のあとなので、型を狭められないよう配列から取り直す
   const after = state.actors.find((a) => a.id === 'p2');
   assert(after?.alive === true && after.left !== true, '起こされたら印が消える');
+}
+
+// --- 54. チュートリアルは毎回まったく同じ ---
+{
+  const a = createInitialGame('tutorial');
+  const b = createInitialGame('tutorial');
+  assert(
+    a.floor.tiles.join('') === b.floor.tiles.join(''),
+    '地形が毎回同じ（ランダムだと「次はここで殴る」と教えられない）',
+  );
+  const pos = (g: GameState) =>
+    [...g.actors, ...g.items]
+      .map((e) => ('pos' in e && e.pos ? `${e.pos.x},${e.pos.y}` : ''))
+      .join('|');
+  assert(pos(a) === pos(b), '敵とアイテムの位置も毎回同じ');
+
+  const monsters = a.actors.filter((x) => x.kind === 'monster');
+  assert(monsters.length === 1, `敵はコウモリ1匹だけ (${monsters.length})`);
+  assert(monsters[0]?.speciesId === 'bat', '一番弱い敵を置く');
+}
+
+// --- 55. チュートリアルの持ち物は通り道の上にある ---
+{
+  const state = createInitialGame('tutorial');
+  addPlayer(state, 'p1');
+  startGame(state);
+  const me = state.actors.find((x) => x.id === 'p1');
+  if (!me) throw new Error('no player');
+
+  const at = (itemId: string) => state.items.find((i) => i.itemId === itemId && i.pos)?.pos;
+  const potion = at('potion');
+  const sword = at('sword');
+
+  /*
+   * 部屋の真ん中に置いていたときは、端を歩いて踏まずに抜けられた。
+   * そうなると「薬草を拾え」と出たまま先へ進めない。
+   * 右上→右下は (9,6) の1マスしか無いので、その真下に置いてある。
+   */
+  assert(potion?.x === 9 && potion.y === 7, `薬草は降り口の真下 (${potion?.x},${potion?.y})`);
+  assert(sword?.x === 5 && sword.y === 9, `剣は左下へ入って最初のマス (${sword?.x},${sword?.y})`);
+
+  // 出発点に何も置かない。最初の1歩の前に拾ってしまうと順番が崩れる
+  assert(
+    !state.items.some((i) => i.pos && i.pos.x === me.pos.x && i.pos.y === me.pos.y),
+    '出発点には何も置かない',
+  );
+
+  // 1階しかない。降りたら踏破
+  assert(dungeonOf('tutorial').depth === 1, '1階で終わり');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

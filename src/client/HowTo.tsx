@@ -5,25 +5,13 @@ import { TURN_LIMIT_MS } from '../shared/types';
 
 type Props = { onClose: () => void };
 
-/** 初回だけ自動で開くための目印。2回目からは自分で開く */
-const SEEN_KEY = 'roguelike:howto-seen';
-
-export function howToSeen(): boolean {
-  try {
-    return localStorage.getItem(SEEN_KEY) === '1';
-  } catch {
-    // プライベートモードでは読めない。読めないときは「まだ見ていない」でいい
-    return false;
-  }
-}
-
-export function markHowToSeen(): void {
-  try {
-    localStorage.setItem(SEEN_KEY, '1');
-  } catch {
-    // 覚えられなくても遊べる
-  }
-}
+/*
+ * 初回に自動で開くのをやめた。
+ *
+ * 起動していきなり長い文章が出ても読まれないし、読んでも盤の前では忘れている。
+ * 覚えてもらう役は、やって覚えるチュートリアル（Tutorial.tsx）に渡した。
+ * ここは**後から調べ直すための手控え**として、潜行中の歯車の中に残す。
+ */
 
 /**
  * あそびかた。

@@ -17,7 +17,7 @@ import type { SpriteId } from './sprites';
  * **次のダンジョンに行けるだけの装備を作る**のが目的になる。
  */
 
-export type DungeonId = 'ruin' | 'cave' | 'ice';
+export type DungeonId = 'tutorial' | 'ruin' | 'cave' | 'ice';
 
 export type DungeonDef = {
   name: string;
@@ -39,6 +39,28 @@ export type DungeonDef = {
 };
 
 export const DUNGEONS = {
+  /*
+   * チュートリアル。
+   *
+   * 文章で読ませるのをやめて、**やって覚える**ようにした。
+   * 地形も中身も固定（server/dungeon.ts の createTutorialFloor）。
+   * 毎回同じでないと「次はここで殴る」と教えられない。
+   *
+   * 行き先の一覧（DUNGEON_IDS）には入れない。
+   * 踏破数の分母に入ると、遊ぶ場所が4つあるように見えてしまう。
+   */
+  tutorial: {
+    name: 'はじめの間',
+    tagline: 'やって覚える',
+    icon: 'question',
+    depth: 1,
+    theme: { floor: 'floor', wall: 'wall' },
+    monsters: ['bat'],
+    items: [],
+    monsterBase: [0, 0],
+    requires: null,
+  },
+
   ruin: {
     name: '崩れた遺跡',
     tagline: '浅い。まずはここで装備を集める',
@@ -76,7 +98,11 @@ export const DUNGEONS = {
   },
 } as const satisfies Record<DungeonId, DungeonDef>;
 
-export const DUNGEON_IDS = Object.keys(DUNGEONS) as DungeonId[];
+/**
+ * 遊ぶ人が選べる行き先。**チュートリアルは入れない。**
+ * Object.keys だと勝手に増えるので、手で並べる。
+ */
+export const DUNGEON_IDS: DungeonId[] = ['ruin', 'cave', 'ice'];
 
 export function dungeonOf(id: string | null): DungeonDef {
   if (id === null) return DUNGEONS.ruin;

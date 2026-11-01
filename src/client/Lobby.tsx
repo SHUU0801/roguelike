@@ -4,12 +4,12 @@ import { itemDefOf, type ItemId } from '../shared/items';
 import { JOBS, JOB_IDS, jobOf, type JobId } from '../shared/jobs';
 import { BASE_SKILL, SKILLS, skillOf, type SkillId } from '../shared/skills';
 import { BAG_H, BAG_W, MAX_PLAYERS, type GameState } from '../shared/types';
-import { HowTo, howToSeen, markHowToSeen } from './HowTo';
+import { HowTo } from './HowTo';
 import { Icon, TileIcon } from './Icon';
 import { Invite } from './Invite';
 import { ProfileSheet } from './ProfileSheet';
 import { loadProfile, userLevel } from './profile';
-import { learnedOf, loadCleared, loadStash } from './stash';
+import { learnedOf, loadCleared, loadStash, tutorialDone } from './stash';
 
 type Props = {
   state: GameState;
@@ -60,10 +60,9 @@ export function Lobby({
 }: Props) {
   const [tab, setTab] = useState<Tab>('home');
   const [copied, setCopied] = useState(false);
-  const [howTo, setHowTo] = useState(() => !howToSeen());
-  useEffect(() => {
-    if (howTo) markHowToSeen();
-  }, [howTo]);
+  const [howTo, setHowTo] = useState(false);
+  // 文章は自動で出さない。初回に押してほしいのは「やってみる」のほう
+  const [tutorialOver] = useState(() => tutorialDone());
 
   const [stash] = useState(() => loadStash());
   const [cleared] = useState(() => loadCleared());
@@ -145,8 +144,19 @@ export function Lobby({
           {cleared.length}/{DUNGEON_IDS.length}
         </span>
         <span className="spacer" />
-        <button className="icon-btn" aria-label="あそびかた" onClick={() => setHowTo(true)}>
+        {/*
+          「あそびかた」は文章ではなく、やって覚える階へ連れていく。
+          長い説明を最初に出しても読まれないし、
+          読んでも盤の前に戻ったときには忘れている。
+          まだ終えていない人には点を付けて、押す先だと分かるようにする。
+        */}
+        <button
+          className={`icon-btn${tutorialOver ? '' : ' nudge'}`}
+          onClick={() => onChooseDungeon?.('tutorial')}
+          disabled={onChooseDungeon === null}
+        >
           <Icon id="question" size={16} />
+          <span>あそびかた</span>
         </button>
       </header>
 
