@@ -14,6 +14,13 @@ CC0 のものは帰属表示の義務が無いが、後から素材を入れ替�
 | --- | --- | --- | --- | --- |
 | `public/sprites/tiles.png` | 自作（`tools/make-sprites.mjs` が生成） | このリポジトリと同じ | 不要 | 盤面すべて |
 | `public/sprites/icons.png` | 自作（同上） | このリポジトリと同じ | 不要 | UI のアイコン全部 |
+| `public/sprites/portraits.png` | 作者が用意（元絵 `art/source/characters.png`） | このリポジトリと同じ | 不要 | ホームの立ち絵 |
+| `public/sprites/jobs.png` | 同上 | このリポジトリと同じ | 不要 | ダンジョン内のプレイヤーの姿 |
+
+立ち絵と職業の姿は、**作者が用意した1枚絵から切り出している**
+（`npm run art`、`tools/import-art.mjs`）。
+元絵は `art/source/` に置いたまま残してあるので、描き直したら走らせ直すだけでいい。
+出どころを辿れなくならないよう、元絵をリポジトリから消さないこと。
 
 ### 入れ替える予定のもの
 

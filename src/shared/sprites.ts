@@ -135,16 +135,51 @@ export const TILE_SPRITE = {
 export const PORTRAIT_SHEET = {
   url: '/sprites/portraits.png',
   tile: 128,
-  cols: 2,
+  cols: 8,
   rows: 4,
-  /** 待機のコマ数。シート上では横に並ぶ */
-  frames: 2,
 } as const;
 
-/** 行番号。職業の並び順そのもの */
+/** 盤の上の姿。立ち絵と同じ並びで、大きさだけ違う */
+export const JOB_SHEET = {
+  url: '/sprites/jobs.png',
+  /*
+   * 床や壁の 16 より細かい。
+   * 盤のマスは実測 39px なので、16 に縮めると人だけ潰れて読めなかった。
+   */
+  tile: 32,
+  cols: 8,
+  rows: 4,
+} as const;
+
+/** 行番号。職業の並び順そのもの。立ち絵と盤で共通 */
 export const PORTRAIT_ROW: Record<'warrior' | 'rogue' | 'mage' | 'cleric', number> = {
   warrior: 0,
   rogue: 1,
   mage: 2,
   cleric: 3,
 };
+
+/**
+ * 列の意味。**絵の並びそのもの**なので、元絵を描き替えたらここも直す。
+ *
+ * 待機を2つ（idle / idle2）持っているのは、
+ * 呼吸に使うため。同じ絵を点滅させても息づかいにはならない。
+ */
+export const POSE = {
+  /** 立ち。武器を下ろしている */
+  idle: 0,
+  /** 攻撃。斬撃や詠唱のエフェクト付き */
+  attack: 1,
+  /** 踏み込み。歩きのコマにも使う */
+  dash: 2,
+  /** 構え。盾・杖を前に出している */
+  guard: 3,
+  /** 後ろ姿 */
+  back: 4,
+  /** 倒れている */
+  down: 5,
+  /** 勝ち名乗り */
+  cheer: 6,
+  /** 立ちの別コマ */
+  idle2: 7,
+} as const;

@@ -5,7 +5,7 @@ import { JOBS, JOB_IDS, jobOf, type JobId } from '../shared/jobs';
 import { BASE_SKILL, SKILLS, skillOf, type SkillId } from '../shared/skills';
 import { BAG_H, BAG_W, MAX_PLAYERS, type GameState } from '../shared/types';
 import { HowTo } from './HowTo';
-import { Icon, Portrait, TileIcon } from './Icon';
+import { Icon, JobIcon, Portrait, TileIcon } from './Icon';
 import { Invite } from './Invite';
 import { ProfileSheet } from './ProfileSheet';
 import { loadProfile, userLevel } from './profile';
@@ -205,7 +205,7 @@ export function Lobby({
                 const p = players[i];
                 return (
                   <span key={i} className={`slot-face${p ? '' : ' empty'}`} title={p?.name}>
-                    {p ? <TileIcon id={jobOf(p.job).sprite} size={32} /> : null}
+                    {p ? <JobIcon job={p.job ?? 'warrior'} size={32} /> : null}
                     {p?.name && <span className="face-name">{p.name}</span>}
                   </span>
                 );
@@ -223,7 +223,7 @@ export function Lobby({
           <div className="gear">
             <div className="gear-head">
               <span className="hero-art small">
-                <TileIcon id={job.sprite} size={64} />
+                <Portrait job={myJob} size={96} />
               </span>
               <div className="gear-stats">
                 <b>{job.name}</b>

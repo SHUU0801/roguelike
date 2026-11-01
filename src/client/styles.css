@@ -446,6 +446,18 @@ button.wide.primary {
   animation: breathe 2.6s ease-in-out infinite;
 }
 
+/*
+ * 手描きの姿。
+ *
+ * 待機のコマ送り（idle-frames）は使わない。
+ * もらった絵は待機が2枚とも別の立ち方で、0.8秒で入れ替えると
+ * 息づかいではなく痙攣に見えた。拡縮だけで生かす。
+ * 歩きと攻撃はコマが意味を持つので、そちらは絵を切り替える。
+ */
+.sprite.job {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
 .sprite.anim.self {
   animation:
     idle-frames 0.8s steps(2, jump-none) infinite,
@@ -1888,7 +1900,7 @@ button.wide.primary {
   /* 縮めるのは下端を軸に。中心を軸にすると足が浮いて影とずれる */
   transform: scale(var(--portrait-zoom, 1));
   transform-origin: bottom center;
-  animation: portrait-breathe 1.6s steps(2, jump-none) infinite;
+  animation: portrait-breathe 3.4s ease-in-out infinite;
 }
 
 /*
@@ -1904,9 +1916,17 @@ button.wide.primary {
   .portrait { --portrait-zoom: 0.78; }
 }
 
+/*
+ * 立ち絵の呼吸。**絵は切り替えない。**
+ *
+ * もらった絵の待機2枚は別の立ち方で、入れ替えると痙攣して見えた。
+ * 上下に 3px 揺らすだけにする。息を吸って吐く速さに合わせて、
+ * 上がるのはゆっくり、下がるのは少し速く。
+ */
 @keyframes portrait-breathe {
-  from { background-position-x: 0; }
-  to { background-position-x: var(--frame, -128px); }
+  0%   { transform: translateY(0) scale(var(--portrait-zoom, 1)); }
+  45%  { transform: translateY(-3px) scale(var(--portrait-zoom, 1)); }
+  100% { transform: translateY(0) scale(var(--portrait-zoom, 1)); }
 }
 
 /* 動きを減らす設定の人には止めて出す。呼吸くらいで酔わせない */

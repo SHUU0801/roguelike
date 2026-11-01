@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 import { ICON_INDEX, ICON_SHEET, type IconId } from '../shared/icons';
 import {
+  JOB_SHEET,
+  POSE,
   PORTRAIT_ROW,
   PORTRAIT_SHEET,
   SHEET,
@@ -83,15 +85,13 @@ export function TileIcon({ id, size = 32 }: { id: SpriteId; size?: IconSize }) {
 /**
  * ホーム画面の立ち絵。
  *
- * 盤のスプライトと違い、**ピクセル指定で切り出す。**
- * 盤は % 指定（大きさを変えても付いてくる）だが、立ち絵は
- * コマ送りで横へ1枠ずらすので、枠の幅がそのままピクセルで要る。
- *
- * 呼吸は CSS（.portrait）がやる。ここは1コマ目を置くだけ。
+ * シートは 1職業1行・横に8ポーズ（src/shared/sprites.ts の POSE）。
+ * ここで使うのは立ちの2枚（idle / idle2）だけで、
+ * 入れ替えは CSS（.portrait）がやる。残りのポーズは戦闘画面用に取ってある。
  */
 export function Portrait({ job, size = 128 }: { job: PortraitJob; size?: number }) {
-  const { tile, cols, rows, url } = PORTRAIT_SHEET;
-  const scale = size / tile;
+  const { cols, rows, url } = PORTRAIT_SHEET;
+  const at = (col: number) => `${-col * size}px`;
 
   return (
     <span
@@ -101,10 +101,43 @@ export function Portrait({ job, size = 128 }: { job: PortraitJob; size?: number 
         height: size,
         backgroundImage: `url(${url})`,
         backgroundSize: `${cols * size}px ${rows * size}px`,
-        backgroundPosition: `0px ${-PORTRAIT_ROW[job] * size}px`,
-        // コマ送りの幅。CSS の @keyframes がこれだけ横へずらす
-        ['--frame' as string]: `${-size}px`,
-        ['--portrait-scale' as string]: scale,
+        backgroundPosition: `${at(POSE.idle)} ${-PORTRAIT_ROW[job] * size}px`,
+        // 呼吸の行き先。@keyframes がここへ横位置を動かす
+        ['--pose-a' as string]: at(POSE.idle),
+        ['--pose-b' as string]: at(POSE.idle2),
+      }}
+    />
+  );
+}
+
+/**
+ * 盤の上の姿を、一覧やボタンの中に出す。
+ *
+ * 立ち絵と同じ並びの小さいシート（jobs.png）から切り出す。
+ * 仲間の顔や職業の選択に使う。**盤に出る姿と同じ絵**でないと、
+ * 「この顔がダンジョンの中の誰なのか」が繋がらない。
+ */
+export function JobIcon({
+  job,
+  size = 32,
+  pose = POSE.idle,
+}: {
+  job: PortraitJob;
+  size?: number;
+  pose?: number;
+}) {
+  const { cols, rows, url } = JOB_SHEET;
+  return (
+    <span
+      className="icon"
+      style={{
+        width: size,
+        height: size,
+        backgroundImage: `url(${url})`,
+        backgroundSize: `${cols * 100}% ${rows * 100}%`,
+        backgroundPosition: `${(pose / (cols - 1)) * 100}% ${
+          (PORTRAIT_ROW[job] / (rows - 1)) * 100
+        }%`,
       }}
     />
   );

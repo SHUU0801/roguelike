@@ -1,10 +1,13 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { itemDefOf } from '../shared/items';
 import { dungeonOf } from '../shared/dungeons';
-import { jobOf } from '../shared/jobs';
+import { jobOf, type JobId } from '../shared/jobs';
 import { speciesOf } from '../shared/monsters';
 import {
   ANIMATED,
+  JOB_SHEET,
+  POSE,
+  PORTRAIT_ROW,
   SHEET,
   SPRITE_INDEX,
   TILE_SPRITE,
@@ -65,6 +68,34 @@ function spriteStyle(id: SpriteId): CSSProperties {
     style['--wx1'] = atCol(col + 3);
   }
   return style as CSSProperties;
+}
+
+/**
+ * プレイヤーの姿。**盤のシートではなく、職業だけのシートから切り出す。**
+ *
+ * 床や敵は自分で描いた 16x16、プレイヤーは手で描いてもらった絵と、
+ * 出どころが違う。1枚にまとめると、どちらかを描き直すたび
+ * もう一方まで貼り直すことになるので、シートを分けてある。
+ *
+ * 切り出し方（% 指定）とコマの渡し方（--fx / --wx）は
+ * spriteStyle と同じにしてある。CSS 側は区別せずに動かせる。
+ */
+function jobStyle(job: JobId | null, pose: number = POSE.idle): CSSProperties {
+  // 職業を選ぶ前の人も居る。jobOf と同じで、既定は戦士
+  const row = PORTRAIT_ROW[job ?? 'warrior'];
+  const atCol = (c: number) => `${(c / Math.max(1, JOB_SHEET.cols - 1)) * 100}%`;
+
+  return {
+    backgroundImage: `url(${JOB_SHEET.url})`,
+    backgroundSize: `${JOB_SHEET.cols * 100}% ${JOB_SHEET.rows * 100}%`,
+    backgroundPosition: `${atCol(pose)} ${(row / Math.max(1, JOB_SHEET.rows - 1)) * 100}%`,
+    // 待機の呼吸は立ちの2枚を往復する
+    '--fx0': atCol(POSE.idle),
+    '--fx1': atCol(POSE.idle2),
+    // 歩きは踏み込みのコマと立ちを往復する
+    '--wx0': atCol(POSE.dash),
+    '--wx1': atCol(POSE.idle),
+  } as CSSProperties;
 }
 
 /** 動きの向きは CSS 変数で渡す。キーフレーム側がこれを掛けて使う */
@@ -157,14 +188,20 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
 
       // 乗っているもの（Actor > アイテム）。記憶だけのマスには出さない
       const item = visible && !occupant ? itemAt(state, x, y) : undefined;
-      // プレイヤーは職業ごとに姿が違う。全員同じ絵だと番号でしか見分けられない
-      const topSprite: SpriteId | null = occupant
-        ? occupant.kind === 'player'
-          ? jobOf(occupant.job).sprite
-          : speciesOf(occupant.speciesId).sprite
-        : item
-          ? itemDefOf(item.itemId).sprite
-          : null;
+      /*
+       * 上に乗っているものの絵。
+       * プレイヤーだけ別のシート（職業シート）から取るので、
+       * ここでは「盤のシートの絵」と「プレイヤー」を分けて持つ。
+       */
+      const isPlayer = occupant?.kind === 'player';
+      const playerJob: JobId | null = isPlayer ? occupant.job : null;
+      const topSprite: SpriteId | null =
+        occupant && occupant.kind === 'monster'
+          ? speciesOf(occupant.speciesId).sprite
+          : !occupant && item
+            ? itemDefOf(item.itemId).sprite
+            : null;
+      const hasTop = topSprite !== null || isPlayer;
 
       // 倒れた仲間。actorAt は生きているものしか返さないので別に探す。
       // どこで倒れたかが見えないと、起こしに行きようがない
@@ -187,7 +224,7 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
             remembered ? "dim" : "",
             movable ? "movable" : "",
             // 何も乗っていない行き先には点を出す。「ここを押せば歩く」が1秒で分かる
-            movable && !topSprite ? "vacant" : "",
+            movable && !hasTop ? "vacant" : "",
             reachable ? 'reachable' : '',
             onPath ? 'on-path' : '',
             mark,
@@ -219,14 +256,20 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
           )}
 
           {sprites
-            ? topSprite && (
+            ? hasTop && (
                 // key にターンを入れてあるのが肝。ターンごとに要素を作り直すので
                 // 同じ種類のアニメーションでも毎回きちんと再生される
                 <span
                   key={`${occupant?.id ?? 'item'}-${state.turn}`}
                   className={[
                     'sprite',
-                    ANIMATED.has(topSprite) ? 'anim' : '',
+                    topSprite && ANIMATED.has(topSprite) ? 'anim' : '',
+                    /*
+                     * 手描きの絵は待機が2枚とも別の立ち方で、
+                     * 入れ替えると息づかいではなく痙攣に見えた。
+                     * プレイヤーの待機はコマを送らず、拡縮だけで生かす。
+                     */
+                    isPlayer ? 'job' : '',
                     occupant?.id === myId ? 'self' : '',
                     // 種族ごとに攻撃モーションを変えるための目印
                     occupant?.kind === 'monster' ? `s-${occupant.speciesId}` : '',
@@ -236,14 +279,20 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  style={{ ...spriteStyle(topSprite), ...effectStyle(effect) }}
+                  style={{
+                    ...(isPlayer
+                      ? // 殴りかかっているあいだだけ攻撃の絵にする
+                        jobStyle(playerJob, effect?.kind === 'lunge' ? POSE.attack : POSE.idle)
+                      : spriteStyle(topSprite as SpriteId)),
+                    ...effectStyle(effect),
+                  }}
                 />
               )
             : glyphAt(state, x, y, visible, remembered)}
 
           {/* 倒れた仲間。薄く寝かせて描く */}
           {sprites && fallen && (
-            <span className="sprite fallen" style={spriteStyle(jobOf(fallen.job).sprite)} />
+            <span className="sprite fallen" style={jobStyle(fallen.job, POSE.down)} />
           )}
 
           {/* 誰が誰かの目印。全員が同じ見た目なので番号が要る */}

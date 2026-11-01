@@ -4,20 +4,33 @@
  *   npm run art            -- 下見（どこを切るかだけ出す。書き込まない）
  *   npm run art -- --write -- 実際に書き出す
  *
- * ## なぜ切り出しが要るか
+ * ## 元絵
  *
- * 配られる絵は「職業名のラベル + 128 の列 + 16 の列」が1枚に並んだ一覧で、
- * ゲームが読む並び（1職業1行・コマが横に隣り合う）とは違う。
- * 手で切ると、絵を描き直すたびに同じ作業が要る。ここに閉じ込める。
+ * `art/source/characters.png`。職業の一覧で、1職業につき2段:
  *
- * ## 位置をどうやって決めるか
+ *   ラベル │ 大きい姿 ×8ポーズ
+ *          │ 小さい姿 ×8ポーズ
  *
- * 座標を決め打ちにしない。**絵のある塊を自分で探す。**
- * 背景（白または透明）でない画素を行ごと・列ごとに数えて、
- * 途切れているところで区切る。ラベルの文字も塊として拾ってしまうので、
- * 「高さが 128 に近い帯」「高さが 16 に近い帯」だけを採る。
+ * ゲームが読むのはこの2枚:
+ *   public/sprites/portraits.png  128×128 立ち絵（ホーム）
+ *   public/sprites/jobs.png        16×16  盤の上の姿
  *
- * 絵の中身を加工はしない。切って並べ替えるだけ。
+ * ## 決め打ちにしないこと
+ *
+ * 座標を直書きしない。絵を描き直すたびに合わなくなる。
+ * 代わりに**中身のある塊を自分で探す。**
+ *
+ * ただし、探し方には元絵の作りを1つだけ前提にしている：
+ * **小さい姿の段は必ず8列きれいに分かれる。** 大きい姿のほうは
+ * 斬撃や光のエフェクトが隣の枠にはみ出して、2つの姿が1つの塊に
+ * 繋がってしまうことがある（実際ファイターの2番目と3番目が繋がった）。
+ * なので**列の切れ目は小さい段から決めて、大きい段にも同じ切れ目を使う。**
+ *
+ * ## 背景の見分け方
+ *
+ * 「白っぽい画素は背景」では駄目だった。僧侶の法衣が生成り色で、
+ * 一緒に消える。**縁から白を塗りつぶして（flood fill）繋がっている
+ * ところだけ背景**とみなす。中の白は輪郭で囲まれているので残る。
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -27,13 +40,26 @@ import { decodePng, encodePng } from './png.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = resolve(here, '../art/source');
 
-/**
- * 元絵を探す。
+/** 絵の並び順。一覧の上から順に、ゲーム側の職業 id へ対応づける */
+const JOBS = ['warrior', 'rogue', 'mage', 'cleric'];
+/** 1職業あたりのポーズ数 */
+const POSES = 8;
+/** ラベルの列。ここから右だけを見る */
+const LABEL_W = 170;
+
+const PORTRAIT_TILE = 128;
+/*
+ * 盤の上の姿の大きさ。
  *
- * characters.png が本命だが、**名前が違っても拾う。**
- * 「characters (1).png」のまま置かれて動かない、で1往復するのが無駄なので、
- * art/source に PNG が1枚だけあればそれを使う。
+ * 元絵の小さいほうは 45px ほどある。**16 に縮めたら潰れて読めなかった**
+ * （実機で見たら、鎧も顔も分からない黒い塊になった）。
+ * 盤のマスは実測 39px で描かれるので、32 ならほぼ等倍で見られる。
+ * 床や壁は 16 のままだが、人だけ細かいのは見慣れた作りなので気にしない。
  */
+const BOARD_TILE = 32;
+
+/* ── 元絵を探す ────────────────────────────────────── */
+
 function findSource() {
   const named = resolve(SRC_DIR, 'characters.png');
   if (existsSync(named)) return named;
@@ -47,29 +73,53 @@ function findSource() {
   return null;
 }
 
-/** 絵の並び順。一覧の上から順に、ゲーム側の職業 id へ対応づける */
-const JOBS = ['warrior', 'rogue', 'mage', 'cleric'];
+/* ── 背景を見つける ────────────────────────────────── */
 
-/** 背景とみなす色か。透明か、ほぼ白 */
-function isBlank(px, i) {
-  if (px[i + 3] < 16) return true;
-  return px[i] > 244 && px[i + 1] > 244 && px[i + 2] > 244;
-}
-
-/** 行ごとに「絵のある画素」を数える */
-function rowInk(img) {
+/**
+ * 縁から白を塗りつぶして、外に繋がっている白だけを背景にする。
+ *
+ * 「白っぽい画素は全部背景」にしたら、僧侶の法衣（生成り）まで消えた。
+ * 中の白は輪郭に囲まれていて外と繋がっていないので、この方法なら残る。
+ */
+function findBackground(img) {
   const { width, height, px } = img;
-  const out = new Array(height).fill(0);
-  for (let y = 0; y < height; y++) {
-    let n = 0;
-    for (let x = 0; x < width; x++) if (!isBlank(px, (y * width + x) * 4)) n++;
-    out[y] = n;
+  const bg = new Uint8Array(width * height);
+  const whiteish = (i) => px[i + 3] < 16 || (px[i] > 235 && px[i + 1] > 235 && px[i + 2] > 235);
+
+  const stack = [];
+  const push = (x, y) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const p = y * width + x;
+    if (bg[p]) return;
+    if (!whiteish(p * 4)) return;
+    bg[p] = 1;
+    stack.push(p);
+  };
+
+  for (let x = 0; x < width; x++) {
+    push(x, 0);
+    push(x, height - 1);
   }
-  return out;
+  for (let y = 0; y < height; y++) {
+    push(0, y);
+    push(width - 1, y);
+  }
+
+  while (stack.length) {
+    const p = stack.pop();
+    const x = p % width;
+    const y = (p / width) | 0;
+    push(x - 1, y);
+    push(x + 1, y);
+    push(x, y - 1);
+    push(x, y + 1);
+  }
+  return bg;
 }
 
-/** 連続して中身のあるところを帯として拾う */
-function bands(ink, minGap = 2) {
+/* ── 帯と列 ────────────────────────────────────────── */
+
+function bandsOf(ink, minGap) {
   const out = [];
   let start = -1;
   let gap = 0;
@@ -89,57 +139,215 @@ function bands(ink, minGap = 2) {
   return out;
 }
 
-/** その帯の中で、列ごとに中身のある塊を拾う */
-function columnsIn(img, from, to, minGap = 3) {
-  const { width, px } = img;
-  const ink = new Array(width).fill(0);
-  for (let x = 0; x < width; x++) {
+function rowBands(img, bg) {
+  const { width, height } = img;
+  const ink = new Array(height).fill(0);
+  for (let y = 0; y < height; y++) {
     let n = 0;
-    for (let y = from; y <= to; y++) if (!isBlank(px, (y * width + x) * 4)) n++;
-    ink[x] = n;
+    for (let x = LABEL_W; x < width; x++) if (!bg[y * width + x]) n++;
+    ink[y] = n;
   }
-  return bands(ink, minGap);
+
+  // 段と段がくっついていたら、中が一番薄いところで割る
+  const out = [];
+  for (const b of bandsOf(ink, 2)) {
+    if (b.to - b.from + 1 <= 140) {
+      out.push(b);
+      continue;
+    }
+    let cut = -1;
+    let best = Infinity;
+    // 端のほうで割らない。真ん中あたりだけ見る
+    for (let y = b.from + 40; y <= b.to - 30; y++) {
+      if (ink[y] < best) {
+        best = ink[y];
+        cut = y;
+      }
+    }
+    out.push({ from: b.from, to: cut - 1 }, { from: cut + 1, to: b.to });
+  }
+  return out;
 }
 
-/** 元画像の矩形を、tile×tile の枠の中央に置いて切り出す */
-function cut(img, box, tile) {
-  const out = new Uint8Array(tile * tile * 4);
-  const w = box.x1 - box.x0 + 1;
-  const h = box.y1 - box.y0 + 1;
-  if (w > tile || h > tile) {
-    throw new Error(`枠(${tile})より大きい塊がある: ${w}x${h} @ ${box.x0},${box.y0}`);
+function columnCenters(img, bg, band) {
+  const { width } = img;
+  const ink = new Array(width).fill(0);
+  for (let x = LABEL_W; x < width; x++) {
+    let n = 0;
+    for (let y = band.from; y <= band.to; y++) if (!bg[y * width + x]) n++;
+    ink[x] = n;
   }
-  // 横は中央、縦は下ぞろえ。立ち絵は足元が揃っていないと並べたとき浮く
-  const ox = Math.floor((tile - w) / 2);
-  const oy = tile - h;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const s = ((box.y0 + y) * img.width + (box.x0 + x)) * 4;
-      if (isBlank(img.px, s)) continue;
-      const d = ((oy + y) * tile + (ox + x)) * 4;
-      out[d] = img.px[s];
-      out[d + 1] = img.px[s + 1];
-      out[d + 2] = img.px[s + 2];
-      out[d + 3] = img.px[s + 3];
+  return bandsOf(ink, 3).map((b) => (b.from + b.to) / 2);
+}
+
+/* ── 切り出し ──────────────────────────────────────── */
+
+/**
+ * 枠の中から、その姿だけを取り出す。
+ *
+ * 隣の枠の斬撃や光が切れ目をまたいで入ってくる。そのまま詰めると
+ * 枠の端に細い縦の切れ端が残る（実際、ファイターと魔法使いで出た）。
+ *
+ * 繋がっている塊ごとに分けて、**枠の左右にぴったり接していて細いもの**を捨てる。
+ * 魔法使いの浮いている玉のように、離れていても太いものは残す。
+ */
+function extractCell(img, bg, x0, x1, y0, y1) {
+  const w = x1 - x0 + 1;
+  const h = y1 - y0 + 1;
+  const label = new Int32Array(w * h).fill(-1);
+  const blobs = [];
+
+  for (let i = 0; i < w * h; i++) {
+    if (label[i] >= 0) continue;
+    const sx = i % w;
+    const sy = (i / w) | 0;
+    if (bg[(y0 + sy) * img.width + (x0 + sx)]) continue;
+
+    const id = blobs.length;
+    const blob = { n: 0, x0: sx, x1: sx, y0: sy, y1: sy };
+    const stack = [i];
+    label[i] = id;
+    while (stack.length) {
+      const p = stack.pop();
+      const px = p % w;
+      const py = (p / w) | 0;
+      blob.n++;
+      if (px < blob.x0) blob.x0 = px;
+      if (px > blob.x1) blob.x1 = px;
+      if (py < blob.y0) blob.y0 = py;
+      if (py > blob.y1) blob.y1 = py;
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nx = px + dx;
+        const ny = py + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const q = ny * w + nx;
+        if (label[q] >= 0) continue;
+        if (bg[(y0 + ny) * img.width + (x0 + nx)]) continue;
+        label[q] = id;
+        stack.push(q);
+      }
+    }
+    blobs.push(blob);
+  }
+
+  if (blobs.length === 0) return null;
+
+  const biggest = blobs.reduce((a, b) => (b.n > a.n ? b : a));
+  const keep = blobs.map((b) => {
+    if (b === biggest) return true;
+    const touchesEdge = b.x0 === 0 || b.x1 === w - 1;
+    if (!touchesEdge) return true;
+    // 枠に接しているものは、細いか縦長なら隣から入ってきた切れ端とみなす
+    const bw = b.x1 - b.x0 + 1;
+    const bh = b.y1 - b.y0 + 1;
+    return bw >= 16 && bh / bw <= 3;
+  });
+
+  let ax = w;
+  let bx = -1;
+  let ay = h;
+  let by = -1;
+  blobs.forEach((b, i) => {
+    if (!keep[i]) return;
+    if (b.x0 < ax) ax = b.x0;
+    if (b.x1 > bx) bx = b.x1;
+    if (b.y0 < ay) ay = b.y0;
+    if (b.y1 > by) by = b.y1;
+  });
+  if (bx < 0) return null;
+
+  return {
+    box: { x0: x0 + ax, x1: x0 + bx, y0: y0 + ay, y1: y0 + by },
+    /** そこを絵として使うか。捨てた切れ端は透明にする */
+    isInk: (x, y) => {
+      const lx = x - x0;
+      const ly = y - y0;
+      if (lx < 0 || ly < 0 || lx >= w || ly >= h) return false;
+      const id = label[ly * w + lx];
+      return id >= 0 && keep[id];
+    },
+  };
+}
+
+/**
+ * 矩形を tile×tile の枠へ縮めて置く。
+ *
+ * 行き先1画素ぶんの元画素をまとめて平均する（面積平均）。
+ * 1画素ずつ間引くと、細い線が丸ごと消えて別の絵になる。
+ *
+ * 背景は透明として扱い、色は不透明度で重みを付けてから混ぜる。
+ * そうしないと縁に白が滲む。
+ *
+ * 横は中央、縦は**下ぞろえ。** 立ち絵も盤の姿も、足元が揃っていないと
+ * 並べたとき浮いたり沈んだりして見える。
+ */
+function resampleInto(img, isInk, box, tile, pad) {
+  const out = new Uint8Array(tile * tile * 4);
+  const sw = box.x1 - box.x0 + 1;
+  const sh = box.y1 - box.y0 + 1;
+
+  const avail = tile - pad * 2;
+  const scale = Math.min(avail / sw, avail / sh);
+  const dw = Math.max(1, Math.round(sw * scale));
+  const dh = Math.max(1, Math.round(sh * scale));
+  const ox = Math.floor((tile - dw) / 2);
+  const oy = tile - pad - dh;
+
+  for (let dy = 0; dy < dh; dy++) {
+    for (let dx = 0; dx < dw; dx++) {
+      const sx0 = box.x0 + (dx / dw) * sw;
+      const sx1 = box.x0 + ((dx + 1) / dw) * sw;
+      const sy0 = box.y0 + (dy / dh) * sh;
+      const sy1 = box.y0 + ((dy + 1) / dh) * sh;
+
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      let n = 0;
+      for (let y = Math.floor(sy0); y < Math.max(Math.floor(sy0) + 1, Math.ceil(sy1)); y++) {
+        for (let x = Math.floor(sx0); x < Math.max(Math.floor(sx0) + 1, Math.ceil(sx1)); x++) {
+          n++;
+          if (!isInk(x, y)) continue; // 背景と切れ端は透明。色は混ぜない
+          const s = (y * img.width + x) * 4;
+          const al = img.px[s + 3] / 255;
+          r += img.px[s] * al;
+          g += img.px[s + 1] * al;
+          b += img.px[s + 2] * al;
+          a += al;
+        }
+      }
+      if (n === 0 || a === 0) continue;
+
+      const d = ((oy + dy) * tile + (ox + dx)) * 4;
+      out[d] = Math.round(r / a);
+      out[d + 1] = Math.round(g / a);
+      out[d + 2] = Math.round(b / a);
+      out[d + 3] = Math.round((a / n) * 255);
     }
   }
   return out;
 }
 
-/** 帯と列から、実際に中身のある矩形まで詰める */
-function tighten(img, x0, x1, y0, y1) {
-  let a = y1;
-  let b = y0;
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      if (!isBlank(img.px, (y * img.width + x) * 4)) {
-        if (y < a) a = y;
-        if (y > b) b = y;
-        break;
+function sheetFrom(cells, tile, cols, rows) {
+  const W = cols * tile;
+  const H = rows * tile;
+  const out = new Uint8Array(W * H * 4);
+  cells.forEach(({ row, col, px }) => {
+    if (!px) return;
+    for (let y = 0; y < tile; y++) {
+      for (let x = 0; x < tile; x++) {
+        const s = (y * tile + x) * 4;
+        if (px[s + 3] === 0) continue;
+        const d = ((row * tile + y) * W + (col * tile + x)) * 4;
+        out[d] = px[s];
+        out[d + 1] = px[s + 1];
+        out[d + 2] = px[s + 2];
+        out[d + 3] = px[s + 3];
       }
     }
-  }
-  return { x0, x1, y0: a, y1: b };
+  });
+  return { W, H, out };
 }
 
 /* ── 本体 ──────────────────────────────────────────── */
@@ -154,78 +362,82 @@ function main() {
   }
 
   const img = decodePng(readFileSync(src));
+  const bg = findBackground(img);
   console.log(`元絵: ${src}`);
   console.log(`大きさ: ${img.width}x${img.height}`);
 
-  // 高さで「128 の段」と「16 の段」を見分ける。ラベルの文字は高さが合わないので落ちる
-  const all = bands(rowInk(img));
-  const big = all.filter((b) => b.to - b.from + 1 >= 90);
+  const all = rowBands(img, bg);
+  const big = all.filter((b) => b.to - b.from + 1 >= 70);
   const small = all.filter((b) => {
     const h = b.to - b.from + 1;
-    return h >= 10 && h <= 40;
+    return h >= 24 && h < 70;
   });
 
-  console.log(`高い段 ${big.length} 本 / 低い段 ${small.length} 本`);
-  for (const b of big) console.log(`  高 y=${b.from}..${b.to} (${b.to - b.from + 1})`);
-  for (const b of small) console.log(`  低 y=${b.from}..${b.to} (${b.to - b.from + 1})`);
+  console.log(`大きい段 ${big.length} / 小さい段 ${small.length}`);
+  for (const b of big) console.log(`  大 y=${b.from}..${b.to}`);
+  for (const b of small) console.log(`  小 y=${b.from}..${b.to}`);
 
-  if (big.length !== JOBS.length) {
-    console.log(`※ 高い段が ${JOBS.length} 本見つからない。元絵の余白か背景色を見直す`);
+  if (big.length !== JOBS.length || small.length !== JOBS.length) {
+    console.log(`※ ${JOBS.length} 段ずつ見つからない。元絵の余白を見直す`);
+    process.exitCode = 1;
+    return;
   }
+
+  /*
+   * 列の切れ目は小さい段から決める。
+   * 大きい段はエフェクトが隣へはみ出して塊が繋がるので当てにならない。
+   */
+  const centres = [];
+  for (let i = 0; i < POSES; i++) {
+    const xs = small.map((b) => columnCenters(img, bg, b)[i]).filter((v) => v !== undefined);
+    if (xs.length === 0) break;
+    centres.push(xs.reduce((a, b) => a + b, 0) / xs.length);
+  }
+  if (centres.length !== POSES) {
+    console.log(`※ ポーズが ${centres.length} 列しか取れない（${POSES} 列のはず）`);
+    process.exitCode = 1;
+    return;
+  }
+  const edges = [LABEL_W];
+  for (let i = 1; i < POSES; i++) edges.push(Math.round((centres[i - 1] + centres[i]) / 2));
+  edges.push(img.width - 1);
+  console.log(`列の切れ目: ${edges.join(' ')}`);
 
   const write = process.argv.includes('--write');
-  const plan = [];
+  const portraits = [];
+  const boards = [];
 
-  for (let j = 0; j < Math.min(big.length, JOBS.length); j++) {
-    const cols = columnsIn(img, big[j].from, big[j].to);
-    // 左端はラベル。128 に収まらない幅のものは落とす
-    const poses = cols.filter((c) => {
-      const w = c.to - c.from + 1;
-      return w >= 24 && w <= 128;
-    });
-    plan.push({ job: JOBS[j], band: big[j], poses });
-    console.log(`${JOBS[j]}: ポーズ ${poses.length} 枚`);
-  }
+  JOBS.forEach((job, row) => {
+    let got = 0;
+    for (let col = 0; col < POSES; col++) {
+      const x0 = edges[col];
+      const x1 = edges[col + 1];
+      const pc = extractCell(img, bg, x0, x1, big[row].from, big[row].to);
+      const sc = extractCell(img, bg, x0, x1, small[row].from, small[row].to);
+      if (pc) {
+        portraits.push({ row, col, px: resampleInto(img, pc.isInk, pc.box, PORTRAIT_TILE, 4) });
+        got++;
+      }
+      if (sc) boards.push({ row, col, px: resampleInto(img, sc.isInk, sc.box, BOARD_TILE, 0) });
+    }
+    console.log(`${job}: ${got} ポーズ`);
+  });
 
   if (!write) {
     console.log('\n下見だけ。書き出すなら -- --write');
     return;
   }
 
-  const frames = Math.min(...plan.map((p) => p.poses.length));
-  if (!Number.isFinite(frames) || frames < 1) {
-    console.log('切り出せる絵が無かった');
-    process.exitCode = 1;
-    return;
-  }
+  const dir = resolve(here, '../public/sprites');
+  mkdirSync(dir, { recursive: true });
 
-  const TILE = 128;
-  const W = frames * TILE;
-  const H = plan.length * TILE;
-  const out = new Uint8Array(W * H * 4);
+  const p = sheetFrom(portraits, PORTRAIT_TILE, POSES, JOBS.length);
+  writeFileSync(resolve(dir, 'portraits.png'), encodePng(p.W, p.H, p.out));
+  console.log(`portraits.png （${p.W}x${p.H}）`);
 
-  plan.forEach((p, row) => {
-    p.poses.slice(0, frames).forEach((c, col) => {
-      const box = tighten(img, c.from, c.to, p.band.from, p.band.to);
-      const cell = cut(img, box, TILE);
-      for (let y = 0; y < TILE; y++) {
-        for (let x = 0; x < TILE; x++) {
-          const s = (y * TILE + x) * 4;
-          const d = ((row * TILE + y) * W + (col * TILE + x)) * 4;
-          out[d] = cell[s];
-          out[d + 1] = cell[s + 1];
-          out[d + 2] = cell[s + 2];
-          out[d + 3] = cell[s + 3];
-        }
-      }
-    });
-  });
-
-  const dest = resolve(here, '../public/sprites/portraits.png');
-  mkdirSync(dirname(dest), { recursive: true });
-  writeFileSync(dest, encodePng(W, H, out));
-  console.log(`${dest} （${W}x${H}, 1職業 ${frames} コマ）`);
-  console.log('src/shared/sprites.ts の PORTRAIT_SHEET の cols をこのコマ数に合わせること');
+  const b = sheetFrom(boards, BOARD_TILE, POSES, JOBS.length);
+  writeFileSync(resolve(dir, 'jobs.png'), encodePng(b.W, b.H, b.out));
+  console.log(`jobs.png （${b.W}x${b.H}）`);
 }
 
 main();
