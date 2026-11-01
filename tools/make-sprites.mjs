@@ -225,6 +225,7 @@ const ART = {
     '...KWWK..KWWK...', '...KDK....KDDK..', '...KK......KDK..', '................',
   ],
 
+
   blank: [
     '................', '................', '................', '................',
     '................', '................', '................', '................',
@@ -363,7 +364,7 @@ const ICON_LAYOUT = [
   'helmet', 'dagger', 'hat', 'cross', 'axe', 'horn', 'shield2', 'smoke',
   'flask', 'flame', 'bolt', 'ice', 'sparkle', 'note', 'hammer', 'heart',
   'sword2', 'torch2', 'wing', 'star', 'drop', 'burst', 'question', 'map',
-  'sound', 'mute', 'lock', 'check', 'skull', 'blank', 'blank', 'blank',
+  'sound', 'mute', 'lock', 'check', 'skull', 'cog', 'flee', 'blank',
 ];
 
 const ICON_ART = {
@@ -558,6 +559,31 @@ const ICON_ART = {
     '..KWWWWWWWWWWK..', '..KWKKWWWWKKWK..', '..KWKKWWWWKKWK..', '..KWWWWWWWWWWK..',
     '..KWWWWKKWWWWK..', '..KWWWWKKWWWWK..', '...KWWWWWWWWK...', '....KWKWKWKWK...',
     '....KWKWKWKWK...', '.....KKKKKKK....', '................', '................',
+  ],
+  // --- メニュー ---
+  cog: [
+    '................', '......KKKK......', '...KKKLLLLKKK...', '..KLLLLLLLLLLK..',
+    '..KLLLLLLLLLLK..', '.KLLLLKKKKLLLLK.', 'KKLLLK....KLLLKK', 'KLLLLK....KLLLLK',
+    'KLLLLK....KLLLLK', 'KKLLLK....KLLLKK', '.KLLLLKKKKLLLLK.', '..KLLLLLLLLLLK..',
+    '..KLLLLLLLLLLK..', '...KKKLLLLKKK...', '......KKKK......', '................',
+  ],
+  /*
+   * 退却。扉から外へ出ていく矢印。
+   *
+   * 最初は扉を細く（5ドット）、矢印も細く描いたら、
+   * 16px では「棒と点」にしか見えなかった。
+   * **16px では、形は2つまで。それぞれ太く。**
+   * 扉を左半分いっぱいに、矢印を右半分いっぱいに描き直した。
+   *
+   * 矢印は三角と軸ではなく、太い「＞」にした。
+   * 三角で描くと 16px では潰れて、どちら向きか分からなくなる。
+   * （実際、最初は左向きに見えていた。非常口の記号と同じ向きに揃える）
+   */
+  flee: [
+    '................', '.KKKKKKK........', '.KGGGGGK........', '.KGLLLGK.KKK....',
+    '.KGLLLGK.KRRK...', '.KGLLLGK..KRRK..', '.KGLLLGK...KRRK.', '.KGLLLGK....KRRK',
+    '.KGLLLGK....KRRK', '.KGLLLGK...KRRK.', '.KGLLLGK..KRRK..', '.KGLLLGK.KRRK...',
+    '.KGLLLGK.KKK....', '.KGGGGGK........', '.KKKKKKK........', '................',
   ],
   blank: [
     '................', '................', '................', '................',

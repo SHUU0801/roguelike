@@ -92,6 +92,7 @@ export function ActionBar({
             playing={playing}
             onUse={(id) => onAction({ type: 'useItem', instanceId: id })}
             onDrop={(id) => onAction({ type: 'drop', instanceId: id })}
+            onToggleEquip={(id) => onAction({ type: 'toggleEquip', instanceId: id })}
             onMove={onMoveItem}
           />
         </div>

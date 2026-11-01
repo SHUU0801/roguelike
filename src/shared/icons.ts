@@ -45,7 +45,9 @@ export type IconId =
   | 'mute'
   | 'lock'
   | 'check'
-  | 'skull';
+  | 'skull'
+  | 'cog'
+  | 'flee';
 
 export const ICON_INDEX: Record<IconId, number> = {
   helmet: 0,
@@ -77,4 +79,6 @@ export const ICON_INDEX: Record<IconId, number> = {
   lock: 26,
   check: 27,
   skull: 28,
+  cog: 29,
+  flee: 30,
 };

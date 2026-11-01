@@ -140,6 +140,8 @@ export type Connection =
       setSkillPick: (skillId: string | null) => void;
       /** 遊んでいる人の名前。仲間の一覧に出す */
       setPlayerName: (name: string) => void;
+      /** あきらめて帰る。持ち物は持ち帰れない */
+      retire: () => void;
     };
 
 export function useGame(): Connection {
@@ -220,6 +222,7 @@ export function useGame(): Connection {
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
       setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
       setPlayerName: (name: string) => room.send('name', name),
+      retire: () => room.send('retire'),
     };
   }
 
@@ -243,6 +246,7 @@ export function useGame(): Connection {
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
       setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
       setPlayerName: (name: string) => room.send('name', name),
+      retire: () => room.send('retire'),
     };
   }, [room]);
 

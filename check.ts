@@ -9,7 +9,7 @@ import {
 import { createFloor, spawnPos } from './src/server/dungeon';
 import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
 import { awardExp, takePerk } from './src/server/levels';
-import { resolveTurn } from './src/server/resolve';
+import { resolveTurn, retireCleanup } from './src/server/resolve';
 import { updateVision } from './src/server/vision';
 import { JOBS, type JobId } from './src/shared/jobs';
 import { BASE_SKILL } from './src/shared/skills';
@@ -256,6 +256,50 @@ function putMonster(
     '装備は「使う」で消えない（袋に入れていることが効果）',
   );
   void me;
+}
+
+// --- 4d. 外すと効果は消えるが、袋のマスは食ったまま ---
+{
+  const { state, me } = fresh();
+  state.items = [];
+  const def0 = effectiveDef(state, me);
+  putItem(state, 'it-shield', 'shield', { owner: 'p1' });
+  const cells = usedCells(state, 'p1');
+
+  turn(state, { type: 'toggleEquip', instanceId: 'it-shield' });
+  assert(
+    effectiveDef(state, me) === def0,
+    `外すと守りが戻る (${def0} → ${effectiveDef(state, me)})`,
+  );
+  // ここが「床に置く」との違い。外しても荷物としては嵩張る
+  assert(
+    usedCells(state, 'p1') === cells,
+    `外しても袋のマスは空かない (${cells} → ${usedCells(state, 'p1')})`,
+  );
+
+  turn(state, { type: 'toggleEquip', instanceId: 'it-shield' });
+  assert(effectiveDef(state, me) === def0 + 3, 'つけ直すと効果が戻る');
+}
+
+// --- 4e. 付け外しはターンを使う ---
+{
+  const { state } = fresh();
+  state.items = [];
+  putItem(state, 'it-shield', 'shield', { owner: 'p1' });
+  const t0 = state.turn;
+  turn(state, { type: 'toggleEquip', instanceId: 'it-shield' });
+  // 無料だと毎ターン付け替えられて、剣の弱点（防-1）が無いのと同じになる
+  assert(state.turn === t0 + 1, `付け外しで1ターン進む (${t0} → ${state.turn})`);
+}
+
+// --- 4f. 他人の装備は外せない ---
+{
+  const { state } = fresh();
+  addPlayer(state, 'p2');
+  state.items = [];
+  const item = putItem(state, 'it-mate', 'shield', { owner: 'p2' });
+  turn(state, { type: 'toggleEquip', instanceId: 'it-mate' });
+  assert(item.off !== true, '他人の持ち物は外せない');
 }
 
 // --- 5. 階段を降りる ---
@@ -1025,6 +1069,40 @@ function putMonster(
     left !== undefined && left.ownerId === null,
     '満杯のときは乗っても拾わず、床に残る',
   );
+}
+
+// --- 50. あきらめると、その人だけが抜ける ---
+{
+  const { state, me } = fresh();
+  addPlayer(state, 'p2');
+  const mate = state.actors.find((a) => a.id === 'p2');
+  if (!mate) throw new Error('no mate');
+  clearFloor(state);
+  putItem(state, 'it-keep', 'potion', { owner: 'p1' });
+
+  // GameRoom の 'retire' がやることと同じ
+  me.alive = false;
+  me.hp = 0;
+  retireCleanup(state);
+
+  // 1人の「あきらめる」で全員の潜行を終わらせない
+  assert(state.phase === 'playing', `仲間が残っていれば続く (${state.phase})`);
+  assert(mate.alive, '仲間は巻き込まれない');
+  // 持ち帰れるのは踏破したときだけ。去る人の荷物は床に落ちる
+  const left = state.items.find((i) => i.id === 'it-keep');
+  assert(
+    left !== undefined && left.ownerId === null && left.pos !== null,
+    '去った人の持ち物は床に落ちる',
+  );
+}
+
+// --- 51. 1人なら、あきらめた時点で終わる ---
+{
+  const { state, me } = fresh();
+  me.alive = false;
+  me.hp = 0;
+  retireCleanup(state);
+  assert(state.phase === 'lost', `1人であきらめると終わる (${state.phase})`);
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

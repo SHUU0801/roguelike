@@ -10,9 +10,16 @@
  */
 
 const STORAGE_KEY = 'roguelike:muted';
+const VOLUME_KEY = 'roguelike:volume';
 
 let ctx: AudioContext | null = null;
+/**
+ * すべての音がここを通る。音量はこの1つで決める。
+ * 音ごとに掛け算すると、鳴らす場所を足すたびに掛け忘れが出る。
+ */
+let master: GainNode | null = null;
 let muted = loadMuted();
+let volume = loadVolume();
 
 function loadMuted(): boolean {
   try {
@@ -22,8 +29,32 @@ function loadMuted(): boolean {
   }
 }
 
+function loadVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    const v = raw === null ? 0.7 : Number(raw);
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.7;
+  } catch {
+    return 0.7;
+  }
+}
+
 export function isMuted(): boolean {
   return muted;
+}
+
+export function getVolume(): number {
+  return volume;
+}
+
+export function setVolume(next: number): void {
+  volume = Math.min(1, Math.max(0, next));
+  if (master) master.gain.value = volume;
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume));
+  } catch {
+    // 覚えられなくても、そのあいだは効いている
+  }
 }
 
 export function setMuted(next: boolean): void {
@@ -38,12 +69,24 @@ export function setMuted(next: boolean): void {
 function audio(): AudioContext | null {
   if (muted) return null;
   try {
-    if (!ctx) ctx = new AudioContext();
+    if (!ctx) {
+      ctx = new AudioContext();
+      master = ctx.createGain();
+      master.gain.value = volume;
+      master.connect(ctx.destination);
+    }
     if (ctx.state === 'suspended') void ctx.resume();
     return ctx;
   } catch {
     return null; // 音が出せない環境でもゲームは動く
   }
+}
+
+/** 音の出口。音量はここで一度だけ掛かる */
+function out(): AudioNode | null {
+  const ac = audio();
+  if (!ac) return null;
+  return master ?? ac.destination;
 }
 
 type ToneOptions = {
@@ -73,7 +116,9 @@ function tone({ from, to, dur, type = 'square', gain = 0.06, delay = 0 }: ToneOp
   amp.gain.exponentialRampToValueAtTime(gain, t + 0.008);
   amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-  osc.connect(amp).connect(ac.destination);
+  const dest = out();
+  if (!dest) return;
+  osc.connect(amp).connect(dest);
   osc.start(t);
   osc.stop(t + dur + 0.02);
 }
@@ -100,7 +145,9 @@ function noise(dur: number, gain = 0.07, cutoff = 1800): void {
   amp.gain.setValueAtTime(gain, t);
   amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-  src.connect(filter).connect(amp).connect(ac.destination);
+  const dest = out();
+  if (!dest) return;
+  src.connect(filter).connect(amp).connect(dest);
   src.start(t);
 }
 

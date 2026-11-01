@@ -21,6 +21,7 @@ import {
   startGame,
 } from './game';
 import { rearrange } from './backpack';
+import { retireCleanup } from './resolve';
 import { takePerk } from './levels';
 import { resolveTurn } from './resolve';
 import { updateVision } from './vision';
@@ -80,6 +81,30 @@ export class GameRoom extends Room {
       if (!Array.isArray(ids)) return;
       setLoadout(this.game, client.sessionId, ids.filter((v) => typeof v === 'string'));
       this.publish();
+    });
+
+    /*
+     * あきらめる。
+     *
+     * 持ち帰れるのは踏破したときだけ（07_ホームと周回.md §1）なので、
+     * ここで帰っても袋の中身は残らない。倒れたのと同じ扱いにする。
+     * 置いたのは、**詰んだときに帰る手段が無かった**から。
+     * 松明が尽きて階段も見つからないと、死ぬまで歩くしかなかった。
+     *
+     * 一緒に潜っている人がいるのに1人の判断で終わらせない。
+     * その人だけ倒れた扱いにして、全員いなくなったら終わる。
+     */
+    this.onMessage('retire', (client) => {
+      if (this.game.phase !== 'playing') return;
+      const actor = this.game.actors.find((a) => a.id === client.sessionId);
+      if (!actor || !actor.alive) return;
+
+      actor.alive = false;
+      actor.hp = 0;
+      pushLog(this.game, `${actor.slot}番はダンジョンを去った`);
+      retireCleanup(this.game);
+      this.publish();
+      this.tryResolveTurn();
     });
 
     this.onMessage<unknown>('name', (client, name) => {

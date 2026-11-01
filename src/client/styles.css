@@ -2083,7 +2083,8 @@ button.wide.primary {
 /* --- さそう（QR）とユーザー --- */
 
 .invite-sheet,
-.profile-sheet {
+.profile-sheet,
+.game-menu {
   width: 100%;
   max-width: 420px;
   max-height: 100%;
@@ -2110,6 +2111,100 @@ button.wide.primary {
 
 .invite-actions { display: flex; gap: 8px; }
 .invite-actions .wide { flex: 1; }
+
+/* --- ダンジョン中のメニュー（歯車） --- */
+
+/* 中のボタンはアイコンと字が並ぶので中央に寄せる */
+.game-menu button.wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 取り返しのつかないものは赤。押す前に一度確かめる */
+button.wide.danger {
+  color: #f0c0c0;
+  background: #3a2026;
+  border-color: #6b3540;
+}
+
+.retire-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #1b1418;
+  border: 1px solid #4a2a32;
+  border-radius: 8px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/*
+ * 音量。
+ *
+ * range の見た目はブラウザごとに違うので、自分で描く。
+ * 摘みを 22px にしてあるのは指で掴める最小の大きさ。
+ * 既定の 12px だと、スマホでは摘まめずにバーを叩くことになる。
+ */
+.slider {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #0f1216;
+  border: 1px solid #39404a;
+  border-radius: 3px;
+}
+
+.slider::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -9px;
+  background: #c8ced6;
+  border: 1px solid #39404a;
+  border-radius: 50%;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider::-moz-range-track {
+  height: 6px;
+  background: #0f1216;
+  border: 1px solid #39404a;
+  border-radius: 3px;
+}
+
+.slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  background: #c8ced6;
+  border: 1px solid #39404a;
+  border-radius: 50%;
+}
+
+.slider:disabled { opacity: 0.4; }
+
+/* 数字が動くたびに幅が変わると、摘みの長さも変わって落ち着かない */
+.slider-value {
+  width: 34px;
+  text-align: right;
+  font-size: 13px;
+  color: #c8ced6;
+  font-variant-numeric: tabular-nums;
+}
 
 /* 上のバーの自分のところ */
 .chip.user {
@@ -2234,3 +2329,7 @@ button.wide.primary {
 
 /* 元の場所。指に付いてくる絵のほうが本体なので薄くする */
 .bag-piece.ghosted { opacity: 0.25; }
+
+/* 外している装備。マスは食っているが効いていないことを見せる */
+.bag-piece.off { opacity: 0.4; border-style: dashed; }
+.equip-chip.off { color: #9aa4b2; background: #222730; border-color: #39404a; }

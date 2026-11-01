@@ -177,6 +177,14 @@ export type ItemInstance = {
   at: Pos | null;
   /** 向き。0 がそのまま、1 が90度回した形 */
   rot: number;
+  /**
+   * 外しているか。外しても袋のマスは食う。
+   *
+   * 剣には「防御 -1」が付いているので、守りに回るときは外したい。
+   * ただし**外すのに1ターン使う**（Intent にしてある）。
+   * 無料だと毎ターン付け外しできてしまい、剣の弱点が無いのと同じになる。
+   */
+  off?: boolean;
 };
 
 export type Floor = {
@@ -235,6 +243,8 @@ export type Intent =
   | { type: 'revive' }
   /** わざ。覚えているものが複数あるので、どれを使うかを指定する */
   | { type: 'skill'; skillId: string }
+  /** 装備を付けたり外したり。1ターン使う */
+  | { type: 'toggleEquip'; instanceId: string }
   | { type: 'descend' }
   | { type: 'wait' };
 
@@ -283,6 +293,7 @@ export function equipBonus(state: GameState, actorId: string): { atk: number; de
   let def = 0;
   for (const item of state.items) {
     if (item.ownerId !== actorId || item.at === null) continue;
+    if (item.off) continue; // 外している。マスは食うが効かない
     const e = itemDefOf(item.itemId).equip;
     if (!e) continue;
     atk += e.atk ?? 0;

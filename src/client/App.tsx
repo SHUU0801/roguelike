@@ -3,6 +3,7 @@ import { ActionBar } from './ActionBar';
 import { DPad } from './DPad';
 import { FloorView } from './FloorView';
 import { Icon } from './Icon';
+import { GameMenu } from './GameMenu';
 import { HowTo } from './HowTo';
 import { LevelUp } from './LevelUp';
 import { Lobby } from './Lobby';
@@ -13,7 +14,7 @@ import { goToDungeon, useGame } from './useGame';
 import { recordRun, loadProfile } from './profile';
 import { bringHome, markCleared, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
-import { isMuted, setMuted, sfx } from './sfx';
+import { sfx } from './sfx';
 import type { ItemId } from '../shared/items';
 import {
   FUEL_DANGER,
@@ -55,6 +56,7 @@ export function App() {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   /** 「あとで」で閉じたレベルアップ画面。溜まった回数が増えたらまた出す */
   const [perkSnoozed, setPerkSnoozed] = useState(0);
   /** ホームで持ち込んだもの。決着したときに倉庫から引くのに使う */
@@ -110,8 +112,6 @@ export function App() {
     conn.status === 'open' ? conn.state : null,
     conn.status === 'open' ? conn.myId : null,
   );
-
-  const [muted, setMutedState] = useState(isMuted);
 
 
   // ターンが進んだら、その中身に合わせて音を鳴らす。
@@ -369,15 +369,13 @@ export function App() {
           </span>
         )}
         <span className="turn">{state.turn}</span>
-        {/* 地図は行動ではないので、下のボタン列ではなくここに置く。
-            下に5つ目を足すと 375px でボタンが細くなって押し間違える */}
-        <button
-          className="mute"
-          aria-label="あそびかた"
-          onClick={() => setHowToOpen(true)}
-        >
-          <Icon id="question" size={16} />
-        </button>
+        {/*
+          ここは地図と歯車の2つだけにする。
+          行動ボタンの列に足すと 375px でボタンが細くなって押し間違えるし、
+          ヘッダーに3つ並べるとステータスの数字を押しのけ始めた。
+          音・設定・あきらめるは歯車の中へ。
+          地図は遊んでいる最中に何度も開くので外に残す。
+        */}
         <button
           className="mute"
           aria-label="全体マップ"
@@ -386,16 +384,8 @@ export function App() {
         >
           <Icon id="map" size={16} />
         </button>
-        <button
-          className="mute"
-          aria-label={muted ? '音を出す' : '音を消す'}
-          onClick={() => {
-            const next = !muted;
-            setMuted(next);
-            setMutedState(next);
-          }}
-        >
-          <Icon id={muted ? 'mute' : 'sound'} size={16} />
+        <button className="mute" aria-label="メニュー" onClick={() => setMenuOpen(true)}>
+          <Icon id="cog" size={16} />
         </button>
       </header>
 
@@ -519,6 +509,20 @@ export function App() {
             setPerkSnoozed(0);
           }}
           onLater={() => setPerkSnoozed(me.pendingLevels)}
+        />
+      )}
+
+      {menuOpen && (
+        <GameMenu
+          onClose={() => setMenuOpen(false)}
+          onHowTo={() => {
+            setMenuOpen(false);
+            setHowToOpen(true);
+          }}
+          onRetire={() => {
+            setMenuOpen(false);
+            conn.retire();
+          }}
         />
       )}
 

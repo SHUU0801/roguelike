@@ -266,6 +266,26 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
       return;
     }
 
+    case 'toggleEquip': {
+      const item = state.items.find(
+        (i) => i.id === intent.instanceId && i.ownerId === actor.id,
+      );
+      if (!item) {
+        pushLog(state, 'それは持っていない');
+        return;
+      }
+      if (!itemDefOf(item.itemId).equip) {
+        pushLog(state, 'それは身に着けるものではない');
+        return;
+      }
+      item.off = !item.off;
+      pushLog(
+        state,
+        `${itemDefOf(item.itemId).name}を${item.off ? '外した' : '身に着けた'}`,
+      );
+      return;
+    }
+
     case 'skill': {
       if (!isSkillId(intent.skillId)) return;
       // 使えなかったときは待ち時間を進めない（skills.ts が false を返す）。
@@ -360,6 +380,16 @@ function freeItemSpot(state: GameState, from: Pos): Pos {
     }
   }
   return { ...from };
+}
+
+/**
+ * あきらめた人の後片付け。
+ * 倒れたときと同じで、持っていたものは床に落とし、全員いなくなったら終わる。
+ */
+export function retireCleanup(state: GameState): void {
+  cleanUpDead(state);
+  checkGameOver(state);
+  updateVision(state);
 }
 
 function checkGameOver(state: GameState): void {

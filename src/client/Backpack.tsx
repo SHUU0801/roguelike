@@ -13,6 +13,8 @@ type Props = {
   playing: boolean;
   onUse: (instanceId: string) => void;
   onDrop: (instanceId: string) => void;
+  /** 装備の付け外し。1ターン使う */
+  onToggleEquip: (instanceId: string) => void;
   onMove: (instanceId: string, x: number, y: number, rot: number) => void;
 };
 
@@ -52,6 +54,17 @@ function equipLabel(itemId: string): string {
   return [part('攻', e.atk), part('防', e.def)].filter(Boolean).join(' ');
 }
 
+/**
+ * ここから動いたら「引っ張っている」とみなす距離（px）。
+ *
+ * **0 にしてはいけない。**
+ * 指で押すと必ず 1〜2px は動く。しきい値が無いと、ただ叩いただけでも
+ * 引っ張った扱いになり、離した瞬間に元のマスへ「移動」して選択が外れる。
+ * 画面上は何も起きないので、「使うボタンが出てこない」ように見える。
+ * 実機で言われた不具合はこれだった。
+ */
+const DRAG_SLOP = 8;
+
 export function Backpack({
   state,
   ownerId,
@@ -59,12 +72,19 @@ export function Backpack({
   playing,
   onUse,
   onDrop,
+  onToggleEquip,
   onMove,
 }: Props) {
   const [held, setHeld] = useState<string | null>(null);
   const [rot, setRot] = useState(0);
   /** 指で引っ張っている間の情報。離すまで置き先を決めない */
-  const dragRef = useRef<{ id: string; moved: boolean; pointerId: number } | null>(null);
+  const dragRef = useRef<{
+    id: string;
+    moved: boolean;
+    pointerId: number;
+    /** 押した場所。ここから離れて初めて「引っ張っている」とみなす */
+    from: { x: number; y: number };
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
@@ -139,13 +159,23 @@ export function Backpack({
      *
      * どちらも「指が動いてから」（onPointerMove）に寄せてある。
      */
-    dragRef.current = { id: item.id, moved: false, pointerId: e.pointerId };
+    dragRef.current = {
+      id: item.id,
+      moved: false,
+      pointerId: e.pointerId,
+      from: { x: e.clientX, y: e.clientY },
+    };
   };
+
 
   const onPointerMove = (e: PointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
     if (!drag.moved) {
+      const far =
+        Math.abs(e.clientX - drag.from.x) > DRAG_SLOP ||
+        Math.abs(e.clientY - drag.from.y) > DRAG_SLOP;
+      if (!far) return;
       // 動き始めた。ここで初めて掴んで持ち上げる。
       // 掴むのは袋（枠）側。マス側で捕まえると、以降の移動と離しが
       // そのマスにだけ届き、枠のハンドラが呼ばれない
@@ -265,6 +295,7 @@ export function Backpack({
         className={[
           'bag-piece',
           item.id === holding?.id ? 'held' : '',
+          item.off ? 'off' : '',
           // 指に付いてくる絵のほうが本体になるので、元の場所は薄くする
           dragging && item.id === holding?.id ? 'ghosted' : '',
         ]
@@ -359,7 +390,15 @@ export function Backpack({
           {isUsable(holding.itemId) ? (
             <button onClick={() => onUse(holding.id)}>使う</button>
           ) : (
-            <span className="equip-chip">{equipLabel(holding.itemId)}</span>
+            <>
+              <span className={`equip-chip${holding.off ? ' off' : ''}`}>
+                {holding.off ? '外している' : equipLabel(holding.itemId)}
+              </span>
+              {/* 付け外しは1ターン使う。無料だと剣の弱点が無いのと同じになる */}
+              <button onClick={() => onToggleEquip(holding.id)}>
+                {holding.off ? 'つける' : 'はずす'}
+              </button>
+            </>
           )}
           <button onClick={() => onDrop(holding.id)}>置く</button>
         </div>
