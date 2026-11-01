@@ -635,3 +635,144 @@ button.wide.primary {
   border: 1px solid #39404a;
   border-radius: 6px;
 }
+
+/* --- 段階C: 全体マップ --- */
+
+/*
+ * 盤面に重ねて出す。盤の横や下に常設しないのは、
+ * 375px の縦に 9×11 の盤・ログ・ボタン列が既に詰まっているため。
+ */
+.map-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 11, 14, 0.85);
+}
+
+.map-panel {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #171b21;
+  border: 1px solid #2a2e35;
+  border-radius: 10px;
+}
+
+.map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.map-progress {
+  color: #7b8694;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-head button {
+  padding: 5px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #222730;
+  border: 1px solid #39404a;
+  border-radius: 6px;
+}
+
+/* 列数は JSX 側がフロアの幅から渡す */
+.mini {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+}
+
+.mini-cell {
+  /* マスを正方形に保つ。枠側に縦横比を掛けると行の最小高さに負けて縦に伸びる */
+  aspect-ratio: 1;
+  /* 1fr の最小値は既定で中身の大きさ。これを 0 にしないとマスが列幅を押し広げ、
+     16 列が枠からはみ出す（JSX 側も minmax(0, 1fr) で列を割っている） */
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 1マスが 20px 前後になる。番号が読める下限 */
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #14161a;
+  border-radius: 1px;
+}
+
+/* 盤面と同じ3段階。知らないマスは黒のまま */
+.mini-cell.unseen { background: #0a0b0e; }
+.mini-cell.wall { background: #1d222a; }
+.mini-cell.floor { background: #4d5667; }
+.mini-cell.stairs { background: #3f7d5a; }
+
+/* 見たことはあるが今は見えていない。盤面の .cell.dim と同じ考え方 */
+.mini-cell.dim { filter: brightness(0.5) saturate(0.6); }
+
+/* 乗っているもの。盤面の枠の色と揃える（黄=自分 青=仲間 赤=敵） */
+.mini-cell.me { background: #e0c060; }
+.mini-cell.ally { background: #6a9fd8; }
+.mini-cell.foe { background: #c4564c; }
+.mini-cell.item { background: #d9a441; }
+
+/* 倒れた人。仲間の青のまま暗くして、生きている人と区別する */
+.mini-cell.down {
+  background: #3c5a7a;
+  color: #9fc0e0;
+}
+
+/* 倒れているのが自分のとき。幽霊偵察で動き回るので、
+   自分の黄色の輪を足して地図の中で見失わないようにする */
+.mini-cell.down.mine {
+  box-shadow: inset 0 0 0 2px #e0c060;
+  color: #e0c060;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: #9aa4b2;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 色見本と文字を離さない。折り返しで別の行に割れると意味が分からなくなる */
+  white-space: nowrap;
+}
+
+.map-legend .key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.map-legend .key.me { background: #e0c060; }
+.map-legend .key.ally { background: #6a9fd8; }
+.map-legend .key.down { background: #3c5a7a; }
+.map-legend .key.foe { background: #c4564c; }
+.map-legend .key.item { background: #d9a441; }
+.map-legend .key.stairs { background: #3f7d5a; }
+
+.map-panel .hint {
+  margin: 0;
+  font-size: 12px;
+  color: #7b8694;
+}

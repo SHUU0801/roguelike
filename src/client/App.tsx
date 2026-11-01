@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActionBar } from './ActionBar';
 import { FloorView } from './FloorView';
 import { Lobby } from './Lobby';
+import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
 import { useGame } from './useGame';
 import { useTurnEffects } from './useTurnEffects';
@@ -32,6 +33,7 @@ function useSecondsLeft(deadlineAt: number | null): number | null {
 export function App() {
   const conn = useGame();
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
   const deadlineAt = conn.status === 'open' ? conn.state.deadlineAt : null;
   const secondsLeft = useSecondsLeft(deadlineAt);
@@ -78,6 +80,18 @@ export function App() {
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // 地図の開け閉めは盤面の操作より先に見る。開いている間でも閉じられるように
+      if (e.key === 'm' || e.key === 'M') {
+        setMapOpen((v) => !v);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setMapOpen(false);
+        return;
+      }
+      // 地図で盤面が隠れている間は動かさない。見えていないまま歩くことになる
+      if (mapOpen) return;
+
       const dir = keyToDir[e.key];
       if (dir) {
         e.preventDefault();
@@ -91,7 +105,7 @@ export function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [conn]);
+  }, [conn, mapOpen]);
 
   if (conn.status === 'connecting') {
     return <div className="notice">サーバーに接続中…</div>;
@@ -177,6 +191,16 @@ export function App() {
           </span>
         )}
         <span className="turn">{state.turn}</span>
+        {/* 地図は行動ではないので、下のボタン列ではなくここに置く。
+            下に5つ目を足すと 375px でボタンが細くなって押し間違える */}
+        <button
+          className="mute"
+          aria-label="全体マップ"
+          aria-pressed={mapOpen}
+          onClick={() => setMapOpen((v) => !v)}
+        >
+          🗺
+        </button>
         <button
           className="mute"
           aria-label={muted ? '音を出す' : '音を消す'}
@@ -250,6 +274,8 @@ export function App() {
         inventoryOpen={inventoryOpen}
         onToggleInventory={() => setInventoryOpen((v) => !v)}
       />
+
+      {mapOpen && <MiniMap state={state} myId={myId} onClose={() => setMapOpen(false)} />}
     </div>
   );
 }
