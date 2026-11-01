@@ -133,6 +133,7 @@ function putMonster(
     // 戦闘の試験をするときに結果が変わってしまう
     aware: true,
     effects: {},
+    name: '',
     job: null,
     skills: [],
     cooldowns: {},

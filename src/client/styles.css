@@ -2079,3 +2079,139 @@ button.wide.primary {
   background: #3f7d5a;
   border-color: #79d19a;
 }
+
+/* --- さそう（QR）とユーザー --- */
+
+.invite-sheet,
+.profile-sheet {
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #171b21;
+  border: 1px solid #2a2e35;
+  border-radius: 10px;
+}
+
+/* QR は SVG なので、大きくしてもぼやけない。
+   白地のまま出す（暗い背景に黒いコードだと読めない端末がある） */
+.qr {
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto;
+  display: block;
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+
+.invite-actions { display: flex; gap: 8px; }
+.invite-actions .wide { flex: 1; }
+
+/* 上のバーの自分のところ */
+.chip.user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  max-width: 48%;
+}
+
+.user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #9aa4b2;
+}
+
+.lv-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lv-badge {
+  padding: 3px 9px;
+  font-weight: 700;
+  color: #14161a;
+  background: #e0c060;
+  border-radius: 10px;
+}
+
+.name-input,
+.carry-code {
+  width: 100%;
+  padding: 9px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #11141a;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.carry-code {
+  min-height: 88px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+  resize: none;
+}
+
+.stat-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 4px;
+  background: #1b2029;
+  border: 1px solid #2a2e35;
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile b { font-size: 16px; }
+.stat-tile span:last-child { font-size: 10px; color: #7b8694; }
+
+.carry { display: flex; flex-direction: column; gap: 8px; }
+.carry-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+.carry-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #c8ced6;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.carry-tabs button.on { color: #e8e8e8; border-color: #e0c060; background: #262317; }
+
+/* 仲間の顔に名前を小さく重ねる */
+.slot-face { position: relative; }
+
+.face-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  font-size: 8px;
+  text-align: center;
+  color: #c8ced6;
+  background: rgba(10, 11, 14, 0.75);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

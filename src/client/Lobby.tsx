@@ -6,6 +6,9 @@ import { BASE_SKILL, SKILLS, skillOf, type SkillId } from '../shared/skills';
 import { BAG_H, BAG_W, MAX_PLAYERS, type GameState } from '../shared/types';
 import { HowTo, howToSeen, markHowToSeen } from './HowTo';
 import { Icon, TileIcon } from './Icon';
+import { Invite } from './Invite';
+import { ProfileSheet } from './ProfileSheet';
+import { loadProfile, userLevel } from './profile';
 import { learnedOf, loadCleared, loadStash } from './stash';
 
 type Props = {
@@ -16,6 +19,7 @@ type Props = {
   onChooseJob: (job: JobId) => void;
   onLoadout: (items: ItemId[]) => void;
   onSkillPick: (skillId: SkillId | null) => void;
+  onRename: (name: string) => void;
   /** 行き先を変える。合流した人は変えられないので null が来る */
   onChooseDungeon: ((id: DungeonId) => void) | null;
 };
@@ -51,6 +55,7 @@ export function Lobby({
   onChooseJob,
   onLoadout,
   onSkillPick,
+  onRename,
   onChooseDungeon,
 }: Props) {
   const [tab, setTab] = useState<Tab>('home');
@@ -65,6 +70,9 @@ export function Lobby({
   const [taking, setTaking] = useState<number[]>([]);
   const [skillPick, setSkillPick] = useState<SkillId | null>(null);
   const [picking, setPicking] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profile, setProfile] = useState(() => loadProfile());
 
   const players = state.actors.filter((a) => a.kind === 'player');
   const me = players.find((p) => p.id === myId);
@@ -127,13 +135,14 @@ export function Lobby({
     <div className="lobby">
       {/* 上の状態。数字とアイコンだけ。説明は書かない */}
       <header className="topbar">
+        {/* 自分のところを押すとユーザーの画面。スマホのゲームの定位置 */}
+        <button className="chip user" onClick={() => setProfileOpen(true)}>
+          <b>Lv{userLevel(profile.exp).level}</b>
+          <span className="user-name">{profile.name || 'なまえ未設定'}</span>
+        </button>
         <span className="chip">
           <Icon id="check" size={16} />
           {cleared.length}/{DUNGEON_IDS.length}
-        </span>
-        <span className="chip">
-          <Icon id="heart" size={16} />
-          {stash.length}
         </span>
         <span className="spacer" />
         <button className="icon-btn" aria-label="あそびかた" onClick={() => setHowTo(true)}>
@@ -180,14 +189,15 @@ export function Lobby({
               {Array.from({ length: MAX_PLAYERS }, (_, i) => {
                 const p = players[i];
                 return (
-                  <span key={i} className={`slot-face${p ? '' : ' empty'}`}>
+                  <span key={i} className={`slot-face${p ? '' : ' empty'}`} title={p?.name}>
                     {p ? <TileIcon id={jobOf(p.job).sprite} size={32} /> : null}
+                    {p?.name && <span className="face-name">{p.name}</span>}
                   </span>
                 );
               })}
-              <button className="icon-btn wide-chip" onClick={copy}>
-                {copied ? <Icon id="check" size={16} /> : <Icon id="map" size={16} />}
-                <span>{copied ? 'コピー' : 'さそう'}</span>
+              <button className="icon-btn wide-chip" onClick={() => setInviting(true)}>
+                <Icon id="map" size={16} />
+                <span>さそう</span>
               </button>
             </div>
 
@@ -389,6 +399,18 @@ export function Lobby({
           </button>
         ))}
       </nav>
+
+      {inviting && <Invite url={inviteUrl} onClose={() => setInviting(false)} />}
+
+      {profileOpen && (
+        <ProfileSheet
+          onClose={() => {
+            setProfileOpen(false);
+            setProfile(loadProfile());
+          }}
+          onRename={onRename}
+        />
+      )}
 
       {howTo && <HowTo onClose={() => setHowTo(false)} />}
     </div>

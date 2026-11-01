@@ -16,6 +16,7 @@ import {
   pushLog,
   removePlayer,
   setLoadout,
+  setPlayerName,
   setSkillPick,
   startGame,
 } from './game';
@@ -78,6 +79,12 @@ export class GameRoom extends Room {
       if (this.game.phase !== 'lobby') return;
       if (!Array.isArray(ids)) return;
       setLoadout(this.game, client.sessionId, ids.filter((v) => typeof v === 'string'));
+      this.publish();
+    });
+
+    this.onMessage<unknown>('name', (client, name) => {
+      if (typeof name !== 'string') return;
+      setPlayerName(this.game, client.sessionId, name);
       this.publish();
     });
 

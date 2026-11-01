@@ -138,6 +138,8 @@ export type Connection =
       setLoadout: (items: ItemId[]) => void;
       /** 持ち込むわざ。職業の基本わざに加えて1つ */
       setSkillPick: (skillId: string | null) => void;
+      /** 遊んでいる人の名前。仲間の一覧に出す */
+      setPlayerName: (name: string) => void;
     };
 
 export function useGame(): Connection {
@@ -217,6 +219,7 @@ export function useGame(): Connection {
         room.send('rearrange', { instanceId, x, y, rot }),
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
       setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
+      setPlayerName: (name: string) => room.send('name', name),
     };
   }
 
@@ -239,6 +242,7 @@ export function useGame(): Connection {
         room.send('rearrange', { instanceId, x, y, rot }),
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
       setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
+      setPlayerName: (name: string) => room.send('name', name),
     };
   }, [room]);
 

@@ -87,6 +87,13 @@ export function setSkillPick(state: GameState, id: string, skillId: string | nul
   skillPicks.set(id, skillId);
 }
 
+/** 遊んでいる人の名前。仲間の一覧に出すだけなので、長さだけ切る */
+export function setPlayerName(state: GameState, id: string, name: string): void {
+  const actor = state.actors.find((a) => a.id === id);
+  if (!actor) return;
+  actor.name = name.slice(0, 12);
+}
+
 export function setLoadout(state: GameState, id: string, itemIds: string[]): void {
   if (state.phase !== 'lobby') return;
   const valid = itemIds.filter((v): v is ItemId => v in ITEMS).slice(0, BAG_W * BAG_H);
@@ -165,6 +172,7 @@ export function addPlayer(state: GameState, id: string): void {
     facing: 'n',
     aware: true, // プレイヤーは常に「起きている」。向きと気づきは敵だけの仕組み
     effects: {},
+    name: '',
     job,
     skills: [BASE_SKILL[job]],
     cooldowns: {},
@@ -314,6 +322,7 @@ function spawnMonster(state: GameState, speciesId: SpeciesId, pos: Pos): void {
     effects: {},
     // 以下はプレイヤー専用。型を分けないと決めてある（設計書 §3-1）ので、
     // モンスターは使わない値で埋めておく
+    name: '',
     job: null,
     skills: [],
     cooldowns: {},

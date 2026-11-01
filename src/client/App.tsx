@@ -10,6 +10,7 @@ import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
 import { dirBetween, findPath, shouldStop } from './travel';
 import { goToDungeon, useGame } from './useGame';
+import { recordRun, loadProfile } from './profile';
 import { bringHome, markCleared, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
 import { isMuted, setMuted, sfx } from './sfx';
@@ -81,6 +82,17 @@ export function App() {
    * 画面に渡す関数は使い回す。毎回作り直すと、受け取った側の useEffect が
    * レンダーのたびに走って送信の輪になる（useGame.ts に経緯）。
    */
+  /*
+   * 名前は繋がった時点で一度だけ送る。
+   * ホームで変えたときは ProfileSheet から改めて送られる。
+   */
+  const sendName = conn.status === 'open' ? conn.setPlayerName : null;
+  useEffect(() => {
+    if (!sendName) return;
+    const name = loadProfile().name;
+    if (name) sendName(name);
+  }, [sendName]);
+
   const sendLoadout = conn.status === 'open' ? conn.setLoadout : null;
   const takeLoadout = useCallback(
     (items: ItemId[]) => {
@@ -191,6 +203,9 @@ export function App() {
       .filter((i) => i.ownerId === conn.myId && i.at !== null)
       .map((i) => i.itemId as ItemId);
 
+    // 遊んだ量を記録する。死んでも深さぶんは残る（profile.ts）
+    recordRun(conn.state.floor.depth, phase === 'won');
+
     if (phase === 'won') {
       bringHome(carried);
       markCleared(conn.state.dungeon);
@@ -287,6 +302,7 @@ export function App() {
         onChooseJob={conn.chooseJob}
         onLoadout={takeLoadout}
         onSkillPick={conn.setSkillPick}
+        onRename={conn.setPlayerName}
         /* 合流した人は行き先を変えられない。変えると先に入っている人が困る */
         onChooseDungeon={new URLSearchParams(window.location.search).get('room') ? null : goToDungeon}
       />

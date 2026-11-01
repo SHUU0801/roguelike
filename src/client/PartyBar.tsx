@@ -32,7 +32,7 @@ export function PartyBar({ state, myId }: Props) {
             .filter(Boolean)
             .join(' ')}
         >
-          <b>{p.slot}</b>
+          <b>{p.name || p.slot}</b>
           {/* 誰が何の職業かは、物を渡す相手を決めるのに要る */}
           <Icon id={jobOf(p.job).icon} size={16} />
           {p.alive ? `${p.hp}/${p.maxHp}` : '倒れた'}
