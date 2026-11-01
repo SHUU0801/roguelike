@@ -253,6 +253,12 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
                 : undefined
           }
         >
+          {/*
+            盤を寝かせてあるので、上に乗るものはここで起こす（.stand）。
+            起こさないと人も床と一緒に潰れて、真上から見た絵に戻ってしまう。
+            床の模様と敵の向きの印は寝たまま。あれは床に描いてあるもの。
+          */}
+          <span className="stand">
           {/* 倒れたものの残像。消えるアニメーションの間だけ出る */}
           {sprites && ghost && (
             <span
@@ -313,6 +319,8 @@ export function FloorView({ state, myId, turnEffects, onMove, onTravel, path }: 
           {(occupant?.kind === 'player' || fallen) && (
             <span className="slot">{(occupant ?? fallen)?.slot}</span>
           )}
+
+          </span>
 
           {/*
             敵の向きと状態。
