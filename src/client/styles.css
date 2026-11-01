@@ -1220,7 +1220,10 @@ button.wide.primary {
   width: 0;
   height: 0;
   pointer-events: none;
-  border: 4px solid transparent;
+  /* マスの枠（敵の赤枠は inset 2px）の内側に出す。
+     端ぴったりに置いたら、赤枠と重なって見えなくなった */
+  border: 5px solid transparent;
+  filter: drop-shadow(0 0 1px #0a0b0e);
 }
 
 /*
@@ -1235,15 +1238,15 @@ button.wide.primary {
  */
 .facing { border-color: transparent; }
 
-.facing.f-n { top: 0; left: 50%; margin-left: -4px; border-bottom-color: #6b7280; border-top-width: 0; }
-.facing.f-s { bottom: 0; left: 50%; margin-left: -4px; border-top-color: #6b7280; border-bottom-width: 0; }
-.facing.f-w { left: 0; top: 50%; margin-top: -4px; border-right-color: #6b7280; border-left-width: 0; }
-.facing.f-e { right: 0; top: 50%; margin-top: -4px; border-left-color: #6b7280; border-right-width: 0; }
+.facing.f-n { top: 2px; left: 50%; margin-left: -5px; border-bottom-color: #9aa4b2; border-top-width: 0; }
+.facing.f-s { bottom: 2px; left: 50%; margin-left: -5px; border-top-color: #9aa4b2; border-bottom-width: 0; }
+.facing.f-w { left: 2px; top: 50%; margin-top: -5px; border-right-color: #9aa4b2; border-left-width: 0; }
+.facing.f-e { right: 2px; top: 50%; margin-top: -5px; border-left-color: #9aa4b2; border-right-width: 0; }
 
-.facing.awake.f-n { border-bottom-color: #d4594e; }
-.facing.awake.f-s { border-top-color: #d4594e; }
-.facing.awake.f-w { border-right-color: #d4594e; }
-.facing.awake.f-e { border-left-color: #d4594e; }
+.facing.awake.f-n { border-bottom-color: #ff6b5e; }
+.facing.awake.f-s { border-top-color: #ff6b5e; }
+.facing.awake.f-w { border-right-color: #ff6b5e; }
+.facing.awake.f-e { border-left-color: #ff6b5e; }
 
 /* 気づいた瞬間。マスの上に一度だけ「！」が跳ねる。絵文字は使わない */
 .notice {
