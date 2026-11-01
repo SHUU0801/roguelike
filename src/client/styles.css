@@ -111,13 +111,13 @@ body {
  */
 @keyframes pan {
   from {
-    transform: translate(
+    transform: var(--board) translate(
       calc(var(--cdx, 0) * var(--cw, 0%)),
       calc(var(--cdy, 0) * var(--ch, 0%))
     );
   }
   to {
-    transform: translate(0, 0);
+    transform: var(--board) translate(0, 0);
   }
 }
 
@@ -2467,21 +2467,34 @@ button.wide.danger {
 :root {
   /* 寝かせる角度。大きくすると奥行きは出るが、奥のマスが潰れて読めなくなる */
   --tilt: 26deg;
+
+  /*
+   * 盤の姿勢。**1か所にまとめてあるのが肝。**
+   *
+   * カメラ送り（@keyframes pan）は transform を書き換える。
+   * 傾きをここに持たずに .floor へ直書きしていたら、
+   * **1歩動くたびに 0.32 秒だけ傾きが消えて盤が真っ平らに戻っていた。**
+   * 「途中で一瞬2Dになる」のはこれ。動かす側にも同じ姿勢を掛ける。
+   *
+   * 縮めてあるのは、寝かせると手前の端がカメラに近づいて横に広がり、
+   * そのままでは枠からはみ出して切れるため。
+   */
+  --board: rotateX(var(--tilt)) scale(0.96);
 }
 
 .floor-wrap {
-  /* 小さいほど強い遠近。手前と奥で大きさが変わりすぎない程度に */
-  perspective: 1200px;
+  /*
+   * 小さいほど強い遠近。1200 だと手前の端が広がりすぎて、
+   * 実測で盤が枠から 11px はみ出した（375 の枠に 386）。
+   * 奥行きは角度（--tilt）で足りているので、遠近は控えめでいい。
+   */
+  perspective: 1800px;
   perspective-origin: 50% 44%;
 }
 
 .floor {
   transform-style: preserve-3d;
-  /*
-   * 寝かせると手前の端がカメラに近づいて横に広がる。
-   * そのままだと枠からはみ出して切れるので、少し縮めて収める。
-   */
-  transform: rotateX(var(--tilt)) scale(0.98);
+  transform: var(--board);
 }
 
 /*
@@ -2508,16 +2521,62 @@ button.wide.danger {
  * 描くには面を4枚足すことになり、マスの数だけ要素が増える。
  * 持ち上げて影を落とすだけでも、床より手前にあることは分かる。
  */
+/*
+ * 壁の高さ。
+ *
+ * 持ち上げるだけだと、板が宙に浮いているようにしか見えなかった。
+ * **手前に向いた面を1枚立てる**と、そこで初めて塊になる。
+ *
+ * 立てるのは1枚だけ。カメラは正面から見下ろしているので、
+ * 見えるのは手前（南）の面だけ。残り3面は描いても隠れる。
+ */
+:root {
+  --wall-h: 22px;
+}
+
 .cell.wall {
-  transform: translateZ(20px);
-  /* 足元に落ちる影。これが無いと、持ち上げても浮いているだけに見える */
-  box-shadow: 0 10px 14px rgba(0, 0, 0, 0.7);
+  transform: translateZ(var(--wall-h));
+  transform-style: preserve-3d;
+}
+
+/* 手前の面。マスの下端から床まで垂らす */
+.cell.wall::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: var(--wall-h);
+  /*
+   * マスの下端を軸にして、床まで降ろす。
+   * 符号を間違えると手前（カメラ側）へ倒れて、面が見えなくなる。
+   */
+  transform-origin: top center;
+  transform: rotateX(90deg);
+  /*
+   * 上が明るく下が暗い。面の向きが変わったことを色でも伝える。
+   *
+   * 最初は床より暗い色（#20252e→#0e1116）にしたら、
+   * **暗い床に溶けて面が在ることすら分からなかった。**
+   * 立ち上がりを床より明るくして初めて、壁の厚みとして読める。
+   */
+  background: linear-gradient(#4a5464, #171b21);
+  border-top: 1px solid #5a6474;
 }
 
 /* 覚えているだけの壁は、手前に出しすぎない */
 .cell.wall.dim {
-  transform: translateZ(10px);
-  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.5);
+  transform: translateZ(calc(var(--wall-h) * 0.5));
+}
+
+.cell.wall.dim::after {
+  height: calc(var(--wall-h) * 0.5);
+  opacity: 0.6;
+}
+
+/* 見えていない壁の面は出さない。闇の中に面が浮くとおかしい */
+.cell.unseen::after {
+  display: none;
 }
 
 /* 階段は逆に掘り下げる。降りる場所が窪んで見える */
