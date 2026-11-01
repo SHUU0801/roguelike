@@ -152,8 +152,12 @@ export function Lobby({
         */}
         <button
           className={`icon-btn${tutorialOver ? '' : ' nudge'}`}
-          onClick={() => onChooseDungeon?.('tutorial')}
-          disabled={onChooseDungeon === null}
+          /*
+           * 合流した人は行き先を変えられない（部屋ごと作り直しになるので）。
+           * その人には文章版を出す。押しても何も起きないボタンにするより、
+           * 読めるものがあるほうがいい。
+           */
+          onClick={() => (onChooseDungeon ? onChooseDungeon('tutorial') : setHowTo(true))}
         >
           <Icon id="question" size={16} />
           <span>あそびかた</span>
