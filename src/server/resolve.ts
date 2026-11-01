@@ -257,6 +257,9 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
       actor.maxHp -= REVIVE_COST;
       actor.hp = Math.min(actor.hp, actor.maxHp);
       fallen.alive = true;
+      // 起こされたら「去った」ことにはしない。
+      // ここを残すと、そのあと倒れても「引き返した」と出てしまう
+      fallen.left = false;
       fallen.hp = 1;
       fallen.fuel = Math.max(fallen.fuel, 40);
       pushLog(
@@ -397,5 +400,7 @@ function checkGameOver(state: GameState): void {
   if (players.length === 0) return;
   if (players.every((p) => !p.alive)) {
     state.phase = 'lost';
+    // 1人でも倒れていたなら「全滅」。全員が自分で帰ったなら「引き返した」
+    state.lostBy = players.every((p) => p.left) ? 'left' : 'dead';
   }
 }

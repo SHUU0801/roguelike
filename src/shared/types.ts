@@ -95,6 +95,14 @@ export type Actor = {
   atk: number;
   def: number;
   alive: boolean;
+  /**
+   * 自分から去ったか（倒れたのではなく「あきらめる」を押した）。
+   *
+   * 状態としてはどちらも alive === false だが、
+   * **終わり方の文面が変わる。** 引き返した人に「全滅」と出すと、
+   * 自分で決めて帰ったことが事故のように見える。
+   */
+  left?: boolean;
   /** 松明の残り。プレイヤーだけが持つ（モンスターは 0 のまま使わない） */
   fuel: number;
   /**
@@ -205,6 +213,11 @@ export type Floor = {
 export type GameState = {
   /** lobby = 仲間を待っている状態。「はじめる」で playing になる */
   phase: 'lobby' | 'playing' | 'won' | 'lost';
+  /**
+   * lost の中身。全員が自分から引き返したなら 'left'、
+   * 1人でも倒れていたなら 'dead'。文面を分けるためだけに持つ。
+   */
+  lostBy?: 'dead' | 'left';
   /**
    * どのダンジョンに潜っているか。部屋を作った人が選ぶ。
    * 地形の見た目・深さ・出る敵がこれで変わる（shared/dungeons.ts）。

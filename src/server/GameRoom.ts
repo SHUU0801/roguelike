@@ -101,6 +101,7 @@ export class GameRoom extends Room {
 
       actor.alive = false;
       actor.hp = 0;
+      actor.left = true;
       pushLog(this.game, `${actor.slot}番はダンジョンを去った`);
       retireCleanup(this.game);
       this.publish();

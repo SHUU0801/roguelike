@@ -1101,8 +1101,36 @@ function putMonster(
   const { state, me } = fresh();
   me.alive = false;
   me.hp = 0;
+  me.left = true;
   retireCleanup(state);
   assert(state.phase === 'lost', `1人であきらめると終わる (${state.phase})`);
+  // 自分で帰ったのに「全滅」と出すと、負かされた気分になる
+  assert(state.lostBy === 'left', `終わり方は「引き返した」 (${state.lostBy})`);
+}
+
+// --- 52. 倒れて終わったときは「全滅」のまま ---
+{
+  const { state, me } = fresh();
+  me.alive = false;
+  me.hp = 0;
+  retireCleanup(state);
+  assert(state.lostBy === 'dead', `倒れたなら「全滅」 (${state.lostBy})`);
+}
+
+// --- 53. 起こされたら「去った」印が消える ---
+{
+  const { state, me } = fresh();
+  addPlayer(state, 'p2');
+  const mate = state.actors.find((a) => a.id === 'p2');
+  if (!mate) throw new Error('no mate');
+  mate.pos = freeNeighbour(state, me).pos;
+  mate.alive = false;
+  mate.hp = 0;
+  mate.left = true;
+
+  turn(state, { type: 'revive' });
+  // 印が残ると、そのあと倒れても「引き返した」と出てしまう
+  assert(mate.alive && mate.left === false, '起こされたら印が消える');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

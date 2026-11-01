@@ -418,14 +418,22 @@ export function App() {
       {state.phase === 'lost' && (
         <div className="banner lose">
           <span>
-            {state.floor.depth}F で全滅… {state.turn} ターン
+            {/* 自分で帰ったのに「全滅」と言われると、負かされた気分になる */}
+            {state.lostBy === 'left'
+              ? `${state.floor.depth}F から引き返した`
+              : `${state.floor.depth}F で全滅…`}{' '}
+            {state.turn} ターン
           </span>
           <button onClick={() => location.reload()}>もう一度</button>
         </div>
       )}
       {state.phase === "playing" && me && !me.alive && (
         <div className="banner lose">
-          <span>力尽きた。動いて仲間の目になれる</span>
+          <span>
+            {me.left
+              ? 'ダンジョンを去った。仲間が踏破するまで見ていられる'
+              : '力尽きた。動いて仲間の目になれる'}
+          </span>
         </div>
       )}
       {state.phase === 'playing' && iActed && waitingCount > 0 && (
