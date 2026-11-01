@@ -156,6 +156,7 @@ const ART = {
     'cccccccccccccccc', 'cbbbbbbbbbcbbbbc', 'cbbbbbbbbbcbbbbc', 'cccccccccccccccc',
   ],
 
+
   blank: [
     '................', '................', '................', '................',
     '................', '................', '................', '................',
@@ -294,7 +295,7 @@ const ICON_LAYOUT = [
   'helmet', 'dagger', 'hat', 'cross', 'axe', 'horn', 'shield2', 'smoke',
   'flask', 'flame', 'bolt', 'ice', 'sparkle', 'note', 'hammer', 'heart',
   'sword2', 'torch2', 'wing', 'star', 'drop', 'burst', 'question', 'map',
-  'sound', 'mute', 'blank', 'blank', 'blank', 'blank', 'blank', 'blank',
+  'sound', 'mute', 'lock', 'check', 'skull', 'blank', 'blank', 'blank',
 ];
 
 const ICON_ART = {
@@ -470,6 +471,25 @@ const ICON_ART = {
     '.......KWWWK....', '..KKKKKWWWWK.R.R', '..KWWWWWWWWK.RR.', '..KWWWWWWWWK..R.',
     '..KWWWWWWWWK.RR.', '..KKKKKWWWWK.R.R', '.......KWWWK....', '........KWWK....',
     '.........KWK....', '..........KK....', '................', '................',
+  ],
+  // --- 状態を文字で書かずに済ませるための印 ---
+  lock: [
+    '................', '.....KKKKKK.....', '....KLLLLLLK....', '...KLLKKKKLLK...',
+    '...KLLK..KLLK...', '...KLLK..KLLK...', '..KKKKKKKKKKKK..', '..KYYYYYYYYYYK..',
+    '..KYYYYYYYYYYK..', '..KYYYYKKYYYYK..', '..KYYYKKKKYYYK..', '..KYYYYKKYYYYK..',
+    '..KYYYYKKYYYYK..', '..KYYYYYYYYYYK..', '..KKKKKKKKKKKK..', '................',
+  ],
+  check: [
+    '................', '..............K.', '............KNK.', '...........KNNK.',
+    '..........KNNK..', '.........KNNK...', '.K......KNNK....', 'KNK....KNNK.....',
+    'KNNK..KNNK......', '.KNNKKNNK.......', '..KNNNNNK.......', '...KNNNK........',
+    '....KNK.........', '.....K..........', '................', '................',
+  ],
+  skull: [
+    '................', '....KKKKKKKK....', '...KWWWWWWWWK...', '..KWWWWWWWWWWK..',
+    '..KWWWWWWWWWWK..', '..KWKKWWWWKKWK..', '..KWKKWWWWKKWK..', '..KWWWWWWWWWWK..',
+    '..KWWWWKKWWWWK..', '..KWWWWKKWWWWK..', '...KWWWWWWWWK...', '....KWKWKWKWK...',
+    '....KWKWKWKWK...', '.....KKKKKKK....', '................', '................',
   ],
   blank: [
     '................', '................', '................', '................',

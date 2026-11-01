@@ -42,7 +42,10 @@ export type IconId =
   | 'question'
   | 'map'
   | 'sound'
-  | 'mute';
+  | 'mute'
+  | 'lock'
+  | 'check'
+  | 'skull';
 
 export const ICON_INDEX: Record<IconId, number> = {
   helmet: 0,
@@ -71,4 +74,7 @@ export const ICON_INDEX: Record<IconId, number> = {
   map: 23,
   sound: 24,
   mute: 25,
+  lock: 26,
+  check: 27,
+  skull: 28,
 };

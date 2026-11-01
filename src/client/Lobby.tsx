@@ -23,18 +23,25 @@ type Props = {
 type Tab = 'home' | 'gear' | 'dungeon';
 
 /**
- * 潜る前の画面。下のタブで3つに分けてある。
+ * 潜る前の画面。
  *
- *   ホーム    誰で、どこへ、誰と行くか。そのまま潜れる
- *   そうび    職業・わざ・持ち込み。支度だけをここに集める
- *   ダンジョン 行き先の比較
+ * ## 作り直した理由
  *
- * 1枚に全部載せていたら縦に長くなりすぎて、
- * 「はじめる」に辿り着くのにスクロールが要るようになっていた。
- * スマホのゲームが下タブなのは、**親指の届く場所に行き先を置くため**。
+ * 前の版は**説明文だらけ**だった。「踏破すれば持ち帰れる。倒れたら袋の中身は
+ * その場に落ちる」「まだ覚えたわざが無い。潜ってレベルを上げると覚える」——
+ * 実際のゲームにこういう文章は無い。
  *
- * マッチングの仕組みは作らない。URL を送って合流してもらう形にしておけば、
- * 同時接続が少ないうちでも「人がいなくて遊べない」が起きない（00_ゴール定義.md §2）。
+ * 調べた結果、スマホのゲームのホームはどれも同じ形をしていた
+ * （08_参考にしたもの.md）。
+ *
+ *   上      状態（レベル・所持数）。小さく、数字とアイコンだけ
+ *   中央    いまのキャラ。一番大きい
+ *   親指の位置 主ボタン1つ
+ *   最下部  固定のタブ 3〜5 個
+ *
+ * **文章ではなく、数字・アイコン・見た目の状態で伝える。**
+ * 鍵が掛かっているなら錠前の絵、踏破したならチェック、強さは棒グラフ。
+ * 説明が要るものは「あそびかた」に押し込む。そこが文章の置き場所。
  */
 export function Lobby({
   state,
@@ -48,10 +55,6 @@ export function Lobby({
 }: Props) {
   const [tab, setTab] = useState<Tab>('home');
   const [copied, setCopied] = useState(false);
-  /*
-   * あそびかたは初回だけ自動で開く。
-   * ボタンを置くだけだと、たいていの人は押さずに潜る。
-   */
   const [howTo, setHowTo] = useState(() => !howToSeen());
   useEffect(() => {
     if (howTo) markHowToSeen();
@@ -59,23 +62,21 @@ export function Lobby({
 
   const [stash] = useState(() => loadStash());
   const [cleared] = useState(() => loadCleared());
-  /** 倉庫のどれを持ち込むか。同じものが複数あるので添字で覚える */
   const [taking, setTaking] = useState<number[]>([]);
   const [skillPick, setSkillPick] = useState<SkillId | null>(null);
+  const [picking, setPicking] = useState(false);
 
   const players = state.actors.filter((a) => a.kind === 'player');
   const me = players.find((p) => p.id === myId);
   const myJob: JobId = (me?.job as JobId | null) ?? 'warrior';
   const job = jobOf(myJob);
   const here = dungeonOf(state.dungeon);
-
   const learned = learnedOf(myJob).filter((id) => id !== BASE_SKILL[myJob]);
 
   useEffect(() => {
     onLoadout(taking.map((i) => stash[i]).filter(Boolean));
   }, [taking, stash, onLoadout]);
 
-  // 職業を変えたら、持ち込むわざは選び直し（職業の違うわざは使えない）
   useEffect(() => {
     setSkillPick(null);
   }, [myJob]);
@@ -90,7 +91,6 @@ export function Lobby({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // http の LAN 越しだとクリップボードが使えない。URL は下に出してあるので手で選べる
       setCopied(false);
     }
   };
@@ -99,251 +99,278 @@ export function Lobby({
     .map((i) => stash[i])
     .filter(Boolean)
     .reduce((n, id) => n + itemDefOf(id).shape.length, 0);
-  const jobCells = itemDefOf(job.startingItem).shape.length;
-  const used = jobCells + takenCells;
-  const overflow = used > BAG_W * BAG_H;
+  const used = itemDefOf(job.startingItem).shape.length + takenCells;
+  const full = used > BAG_W * BAG_H;
+
+  /** 強さを棒で出す。数字だけだと、職業どうしの差が一目で分からない */
+  const bar = (value: number, max: number) => (
+    <span className="bar">
+      <i style={{ width: `${Math.min(100, (value / max) * 100)}%` }} />
+    </span>
+  );
+
+  const statRows = (j: typeof job) => (
+    <div className="stats-grid">
+      <Icon id="heart" size={16} />
+      {bar(j.maxHp, 32)}
+      <b>{j.maxHp}</b>
+      <Icon id="sword2" size={16} />
+      {bar(j.atk, 10)}
+      <b>{j.atk}</b>
+      <Icon id="shield2" size={16} />
+      {bar(j.def, 5)}
+      <b>{j.def}</b>
+    </div>
+  );
 
   return (
     <div className="lobby">
+      {/* 上の状態。数字とアイコンだけ。説明は書かない */}
+      <header className="topbar">
+        <span className="chip">
+          <Icon id="check" size={16} />
+          {cleared.length}/{DUNGEON_IDS.length}
+        </span>
+        <span className="chip">
+          <Icon id="heart" size={16} />
+          {stash.length}
+        </span>
+        <span className="spacer" />
+        <button className="icon-btn" aria-label="あそびかた" onClick={() => setHowTo(true)}>
+          <Icon id="question" size={16} />
+        </button>
+      </header>
+
       <div className="lobby-body">
         {tab === 'home' && (
-          <>
-            <header className="title">
-              <h1>ダンジョンへ</h1>
-              <p className="lead">
-                仲間と交代で1手ずつ。<b>踏破すれば持ち帰れる。</b>
-                <br />
-                倒れたら袋の中身はその場に落ちる。
-              </p>
-            </header>
-
-            <section className="me-card">
-              <span className="me-sprite">
-                <TileIcon id={job.sprite} size={48} />
+          <div className="home">
+            {/* 中央にキャラ。一番大きい */}
+            <div className="hero-stage">
+              <span className="hero-art">
+                <TileIcon id={job.sprite} size={64} />
               </span>
-              <span className="me-info">
+              <div className="hero-name">
+                <Icon id={job.icon} size={16} />
                 <b>{job.name}</b>
-                <span className="job-stats">
-                  体力{job.maxHp} 攻{job.atk} 防{job.def}
-                </span>
-                <span className="job-tag">{job.tagline}</span>
-              </span>
-            </section>
+              </div>
+              {statRows(job)}
+            </div>
 
-            {/* いまの支度の要約。そうびタブを開かなくても確認できる */}
-            <section className="summary">
-              <button className="sum-row" onClick={() => setTab('gear')}>
-                <span className="sum-label">わざ</span>
-                <span className="sum-value">
-                  {skillOf(BASE_SKILL[myJob]).name}
-                  {skillPick && ` ／ ${skillOf(skillPick).name}`}
+            {/* 支度の要約。押すとそのタブへ */}
+            <div className="quick">
+              <button className="quick-cell" onClick={() => setTab('gear')}>
+                <Icon id={SKILLS[BASE_SKILL[myJob]].icon} size={32} />
+                {skillPick && <Icon id={SKILLS[skillPick].icon} size={32} />}
+                <span className="quick-label">わざ {skillPick ? 2 : 1}</span>
+              </button>
+              <button className="quick-cell" onClick={() => setTab('gear')}>
+                <TileIcon id={itemDefOf(job.startingItem).sprite} size={32} />
+                <span className="quick-label">
+                  {used}/{BAG_W * BAG_H}
                 </span>
               </button>
-              <button className="sum-row" onClick={() => setTab('gear')}>
-                <span className="sum-label">持ち込み</span>
-                <span className="sum-value">
-                  {used} / {BAG_W * BAG_H} マス
-                </span>
-              </button>
-              <button className="sum-row" onClick={() => setTab('dungeon')}>
-                <span className="sum-label">行き先</span>
-                <span className="sum-value">
-                  {here.name}（{here.depth}階）
-                </span>
-              </button>
-            </section>
-
-            <section>
-              <h2>
-                仲間 {players.length} / {MAX_PLAYERS}
-              </h2>
-              <ul className="party-list">
-                {players.map((p) => (
-                  <li key={p.id}>
-                    <b>{p.slot}</b> <Icon id={jobOf(p.job).icon} size={16} />{' '}
-                    {jobOf(p.job).name}
-                    {p.id === myId && <span className="you">あなた</span>}
-                  </li>
-                ))}
-              </ul>
-              <input
-                className="invite"
-                readOnly
-                value={inviteUrl}
-                onFocus={(e) => e.target.select()}
-              />
-              <button className="wide" onClick={copy}>
-                {copied ? 'コピーした' : 'この URL を送って呼ぶ'}
-              </button>
-              {import.meta.env.DEV && (
-                <p className="hint">
-                  開発中は同じ Wi-Fi に繋いでから開くこと（Network: の URL を使う）。
-                </p>
-              )}
-            </section>
-
-            <div className="menu-actions">
-              <button className="wide" onClick={() => setHowTo(true)}>
-                あそびかた
-              </button>
-              <button className="wide primary" onClick={onStart}>
-                {here.name}へ潜る
+              <button className="quick-cell" onClick={() => setTab('dungeon')}>
+                <Icon id={here.icon} size={32} />
+                <span className="quick-label">B{here.depth}F</span>
               </button>
             </div>
-            <p className="hint">1人でも始められる。後から合流もできる。</p>
-          </>
+
+            {/* 仲間。顔を並べるだけ。空きは丸で出す */}
+            <div className="party-row">
+              {Array.from({ length: MAX_PLAYERS }, (_, i) => {
+                const p = players[i];
+                return (
+                  <span key={i} className={`slot-face${p ? '' : ' empty'}`}>
+                    {p ? <TileIcon id={jobOf(p.job).sprite} size={32} /> : null}
+                  </span>
+                );
+              })}
+              <button className="icon-btn wide-chip" onClick={copy}>
+                {copied ? <Icon id="check" size={16} /> : <Icon id="map" size={16} />}
+                <span>{copied ? 'コピー' : 'さそう'}</span>
+              </button>
+            </div>
+
+          </div>
         )}
 
         {tab === 'gear' && (
-          <>
-            <section>
-              <h2>職業</h2>
-              <div className="jobs">
-                {JOB_IDS.map((id) => {
-                  const j = JOBS[id];
-                  const others = players.filter((p) => p.id !== myId && p.job === id);
-                  return (
-                    <button
-                      key={id}
-                      className={`job-card${id === myJob ? ' on' : ''}`}
-                      onClick={() => onChooseJob(id)}
-                    >
-                      <Icon id={j.icon} size={32} />
-                      <span className="job-name">{j.name}</span>
-                      <span className="job-tag">{j.tagline}</span>
-                      <span className="job-stats">
-                        体力{j.maxHp} 攻{j.atk} 防{j.def}
-                      </span>
-                      {others.length > 0 && (
-                        <span className="job-others">
-                          {others.map((p) => `${p.slot}番`).join('・')}も
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+          <div className="gear">
+            <div className="gear-head">
+              <span className="hero-art small">
+                <TileIcon id={job.sprite} size={64} />
+              </span>
+              <div className="gear-stats">
+                <b>{job.name}</b>
+                {statRows(job)}
               </div>
-            </section>
+            </div>
 
-            <section>
-              <h2>
-                わざ <span className="hint-inline">持ち込めるのは1つ</span>
-              </h2>
-              <div className="skill-list">
-                <div className="skill-row base">
-                  <Icon id={SKILLS[BASE_SKILL[myJob]].icon} size={32} />
-                  <span className="iname">
-                    {skillOf(BASE_SKILL[myJob]).name}
-                    <span className="sdesc">{skillOf(BASE_SKILL[myJob]).desc}</span>
-                  </span>
-                  <span className="tagline-chip">最初から</span>
-                </div>
+            <div className="row-icons">
+              {JOB_IDS.map((id) => (
+                <button
+                  key={id}
+                  className={`pick-tile${id === myJob ? ' on' : ''}`}
+                  aria-label={JOBS[id].name}
+                  onClick={() => onChooseJob(id)}
+                >
+                  <Icon id={JOBS[id].icon} size={32} />
+                  <span>{JOBS[id].name}</span>
+                </button>
+              ))}
+            </div>
 
-                {learned.length === 0 ? (
-                  <p className="hint">
-                    まだ覚えたわざが無い。<b>潜ってレベルを上げると覚える。</b>
-                    踏破して帰れば、次からここで持ち込める。
-                  </p>
+            {/* わざは枠で出す。空き枠を押すと選ぶ */}
+            <div className="skill-slots">
+              <div className="skill-slot filled">
+                <Icon id={SKILLS[BASE_SKILL[myJob]].icon} size={32} />
+                <span>{skillOf(BASE_SKILL[myJob]).name}</span>
+              </div>
+              <button
+                className={`skill-slot${skillPick ? ' filled' : ''}${learned.length ? '' : ' locked'}`}
+                disabled={learned.length === 0}
+                onClick={() => setPicking(true)}
+              >
+                {skillPick ? (
+                  <>
+                    <Icon id={SKILLS[skillPick].icon} size={32} />
+                    <span>{skillOf(skillPick).name}</span>
+                  </>
                 ) : (
-                  learned.map((id) => (
-                    <button
-                      key={id}
-                      className={`skill-row pick${skillPick === id ? ' on' : ''}`}
-                      onClick={() => setSkillPick((now) => (now === id ? null : id))}
-                    >
-                      <Icon id={SKILLS[id].icon} size={32} />
-                      <span className="iname">
-                        {skillOf(id).name}
-                        <span className="sdesc">{skillOf(id).desc}</span>
-                      </span>
-                      <span className="tagline-chip">
-                        {skillPick === id ? '持ち込む' : '選ぶ'}
-                      </span>
-                    </button>
-                  ))
+                  <>
+                    <Icon id={learned.length ? 'star' : 'lock'} size={32} />
+                    <span>{learned.length ? `＋${learned.length}` : '—'}</span>
+                  </>
                 )}
-              </div>
-            </section>
+              </button>
+            </div>
 
-            <section>
-              <h2>
-                持ち込む{' '}
-                <span className="hint-inline">
-                  袋は {BAG_W}×{BAG_H} マス
-                </span>
-              </h2>
+            {/* 袋。実物のマス目をそのまま出す */}
+            <div className="bag-head">
+              <span>
+                {used} / {BAG_W * BAG_H}
+              </span>
+              {full && <span className="warn-chip">!</span>}
+            </div>
+            <div
+              className="bag-grid preview"
+              style={{ gridTemplateColumns: `repeat(${BAG_W}, minmax(0, 1fr))` }}
+            >
+              {Array.from({ length: BAG_W * BAG_H }, (_, i) => (
+                <span
+                  key={i}
+                  className={`bag-cell${i < used ? ' full' : ''}`}
+                  style={{ gridColumn: (i % BAG_W) + 1, gridRow: Math.floor(i / BAG_W) + 1 }}
+                />
+              ))}
+            </div>
+
+            <div className="row-icons wrap">
               {stash.length === 0 ? (
-                <p className="hint">
-                  倉庫は空。<b>踏破すると袋の中身を持ち帰れる。</b>倒れたら持ち帰れない。
-                </p>
+                <span className="empty-chip">
+                  <Icon id="lock" size={16} />
+                </span>
               ) : (
-                <>
-                  <div className="stash">
-                    {stash.map((id, i) => (
-                      <button
-                        key={`${id}-${i}`}
-                        className={`stash-item${taking.includes(i) ? ' on' : ''}`}
-                        onClick={() =>
-                          setTaking((now) =>
-                            now.includes(i) ? now.filter((n) => n !== i) : [...now, i],
-                          )
-                        }
-                      >
-                        <TileIcon id={itemDefOf(id).sprite} size={32} />
-                        <span>{itemDefOf(id).name}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className={overflow ? 'warn' : 'hint'}>
-                    {used} / {BAG_W * BAG_H} マス
-                    {overflow && '（入りきらない分は置いていくことになる）'}
-                  </p>
-                </>
+                stash.map((id, i) => (
+                  <button
+                    key={`${id}-${i}`}
+                    className={`pick-tile${taking.includes(i) ? ' on' : ''}`}
+                    aria-label={itemDefOf(id).name}
+                    onClick={() =>
+                      setTaking((now) =>
+                        now.includes(i) ? now.filter((n) => n !== i) : [...now, i],
+                      )
+                    }
+                  >
+                    <TileIcon id={itemDefOf(id).sprite} size={32} />
+                    <span>{itemDefOf(id).name}</span>
+                  </button>
+                ))
               )}
-            </section>
-          </>
+            </div>
+          </div>
         )}
 
         {tab === 'dungeon' && (
-          <section>
-            <h2>どこへ潜るか</h2>
-            {onChooseDungeon === null && (
-              <p className="hint">合流したので、行き先は部屋を作った人が決めている。</p>
-            )}
-            <div className="dungeons">
-              {DUNGEON_IDS.map((id) => {
-                const d = DUNGEONS[id];
-                const open = isUnlocked(id, cleared);
-                return (
-                  <button
-                    key={id}
-                    className={`dungeon-card${id === state.dungeon ? ' on' : ''}${
-                      open ? '' : ' locked'
-                    }`}
-                    disabled={!open || onChooseDungeon === null}
-                    onClick={() => onChooseDungeon?.(id)}
-                  >
-                    <span className="d-head">
-                      <Icon id={d.icon} size={16} />
-                      <b>{d.name}</b>
-                      <span className="d-depth">{d.depth}階</span>
+          <div className="dungeons">
+            {DUNGEON_IDS.map((id) => {
+              const d = DUNGEONS[id];
+              const open = isUnlocked(id, cleared);
+              return (
+                <button
+                  key={id}
+                  className={`dungeon-card${id === state.dungeon ? ' on' : ''}${
+                    open ? '' : ' locked'
+                  }`}
+                  disabled={!open || onChooseDungeon === null}
+                  onClick={() => {
+                    onChooseDungeon?.(id);
+                    setTab('home');
+                  }}
+                >
+                  <Icon id={open ? d.icon : 'lock'} size={32} />
+                  <span className="d-main">
+                    <b>{d.name}</b>
+                    {/* 難しさは髑髏の数で。文章で書かない */}
+                    <span className="skulls">
+                      {Array.from({ length: Math.ceil(d.depth / 2) }, (_, i) => (
+                        <Icon key={i} id="skull" size={16} />
+                      ))}
                     </span>
-                    <span className="d-tag">
-                      {open ? d.tagline : `${dungeonOf(d.requires).name}を踏破すると開く`}
-                    </span>
-                    {cleared.includes(id) && <span className="d-done">踏破ずみ</span>}
-                  </button>
-                );
-              })}
-            </div>
-            <button className="wide primary" onClick={() => setTab('home')}>
-              決めた
-            </button>
-          </section>
+                  </span>
+                  <span className="d-right">
+                    <b>B{d.depth}F</b>
+                    {cleared.includes(id) && <Icon id="check" size={16} />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
-      {/* 下タブ。親指の届く場所に置く */}
+      {/* わざを選ぶ。枠を押したときだけ出す */}
+      {picking && (
+        <div className="map-overlay" onClick={() => setPicking(false)}>
+          <div className="picker" onClick={(e) => e.stopPropagation()}>
+            <div className="map-head">
+              <b>わざ</b>
+              <button onClick={() => setPicking(false)}>閉じる</button>
+            </div>
+            {learned.map((id) => (
+              <button
+                key={id}
+                className={`skill-row pick${skillPick === id ? ' on' : ''}`}
+                onClick={() => {
+                  setSkillPick((now) => (now === id ? null : id));
+                  setPicking(false);
+                }}
+              >
+                <Icon id={SKILLS[id].icon} size={32} />
+                <span className="iname">
+                  {skillOf(id).name}
+                  <span className="sdesc">{skillOf(id).desc}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/*
+        主ボタンは本文の外に出す。中に置くと、画面が短い端末で
+        スクロールの下に隠れた（375x667 で実際に切れていた）。
+        スマホのゲームで出撃ボタンが常に見えているのはこのため。
+      */}
+      {tab === 'home' && (
+        <button className="launch" onClick={onStart}>
+          <span className="launch-sub">
+            {here.name} B{here.depth}F
+          </span>
+          <span className="launch-main">出撃</span>
+        </button>
+      )}
+
       <nav className="tabs">
         {(
           [

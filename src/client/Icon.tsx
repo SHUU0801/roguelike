@@ -2,6 +2,9 @@ import type { CSSProperties } from 'react';
 import { ICON_INDEX, ICON_SHEET, type IconId } from '../shared/icons';
 import { SHEET, SPRITE_INDEX, type SpriteId } from '../shared/sprites';
 
+/** 16 の倍数だけ。端数だと 1 ドットが間引かれてつぶれる */
+export type IconSize = 16 | 32 | 48 | 64 | 80 | 96;
+
 type Props = {
   id: IconId;
   /**
@@ -12,7 +15,7 @@ type Props = {
    * ぼかさないだけで、端数を直してはくれない。
    * 実際ヘッダーを 15px で出したら、どのアイコンも読めなかった。
    */
-  size?: 16 | 32 | 48;
+  size?: IconSize;
 };
 
 /**
@@ -47,7 +50,7 @@ export function Icon({ id, size = 16 }: Props) {
  * 持ち物の薬草と、盤に落ちている薬草が別の絵だと、
  * 「床にあるこれが持ち物のこれ」が繋がらない。同じ絵を使う。
  */
-export function TileIcon({ id, size = 32 }: { id: SpriteId; size?: 16 | 32 | 48 }) {
+export function TileIcon({ id, size = 32 }: { id: SpriteId; size?: IconSize }) {
   const index = SPRITE_INDEX[id];
   const col = index % SHEET.cols;
   const row = Math.floor(index / SHEET.cols);

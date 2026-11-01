@@ -1627,7 +1627,7 @@ button.wide.primary {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 14px 20px;
+  padding: 12px 12px 8px;
 }
 
 .tabs {
@@ -1734,3 +1734,280 @@ button.wide.primary {
   opacity: 0.55;
   pointer-events: none;
 }
+
+/* ===== ホームの作り直し ===== */
+
+/*
+ * 作り直した理由は Lobby.tsx の頭に書いた。要は説明文だらけだったこと。
+ * スマホのゲームのホームはどれも同じ形をしている（08_参考にしたもの.md）:
+ * 上に状態、中央にキャラ、親指の位置に主ボタン、最下部に固定タブ。
+ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2e35;
+}
+
+.topbar .spacer { flex: 1; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #c8ced6;
+  background: #1b2029;
+  border: 1px solid #2a2e35;
+  border-radius: 12px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #c8ced6;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 10px;
+}
+
+/* --- ホーム --- */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 中央のキャラ。画面で一番大きいものにする */
+.hero-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  /* 375x667 で収まる高さに切り詰めてある。ここを広げると仲間の行が折り返しの下へ落ちる */
+  padding: 10px 12px;
+  background: radial-gradient(ellipse at 50% 35%, #232a36 0%, #171b21 70%);
+  border: 1px solid #2a2e35;
+  border-radius: 12px;
+}
+
+.hero-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  background: #11141a;
+  border: 1px solid #2a2e35;
+  border-radius: 10px;
+}
+
+.hero-art.small { width: 80px; height: 80px; }
+
+.hero-name { display: flex; align-items: center; gap: 6px; font-size: 17px; }
+
+/* 強さは棒で出す。数字だけだと職業どうしの差が一目で分からない */
+.stats-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  width: 100%;
+  max-width: 220px;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.bar {
+  display: block;
+  height: 6px;
+  background: #11141a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar i { display: block; height: 100%; background: #6a9fd8; }
+
+/* 支度の要約。3つ並べて、押すとそのタブへ */
+.quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+.quick-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 10px;
+}
+
+.quick-label { font-size: 12px; color: #9aa4b2; font-variant-numeric: tabular-nums; }
+
+/* 仲間。顔を並べるだけ。空きは枠だけ出す */
+.party-row { display: flex; align-items: center; gap: 6px; }
+
+.slot-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  background: #11141a;
+  border: 1px solid #2a2e35;
+  border-radius: 8px;
+}
+
+.slot-face.empty { border-style: dashed; opacity: 0.5; }
+.wide-chip { margin-left: auto; }
+
+/* 親指の位置の主ボタン。1つだけ */
+.launch {
+  flex: none;
+  margin: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px;
+  font-family: inherit;
+  color: #e8f5ea;
+  background: #2f6b47;
+  border: 1px solid #3f7d5a;
+  border-radius: 12px;
+}
+
+.launch:active { background: #27593b; }
+.launch-sub { font-size: 12px; opacity: 0.8; }
+.launch-main { font-size: 22px; font-weight: 700; letter-spacing: 0.2em; }
+
+/* --- そうび --- */
+
+.gear { display: flex; flex-direction: column; gap: 12px; }
+
+.gear-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: #1b2029;
+  border: 1px solid #2a2e35;
+  border-radius: 10px;
+}
+
+.gear-stats { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+
+.row-icons { display: flex; gap: 6px; }
+.row-icons.wrap { flex-wrap: wrap; }
+
+.pick-tile {
+  flex: 1;
+  min-width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: #c8ced6;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 9px;
+}
+
+.pick-tile.on { color: #e8e8e8; border-color: #e0c060; background: #262317; }
+
+/*
+ * わざの枠。空き枠は点線にして「ここに入る」を見せる。
+ *
+ * クラス名を .slot にしたら、盤面のプレイヤー番号バッジ（同じ .slot）の
+ * position:absolute を拾って、枠が画面の左上に飛んだ。
+ * 名前は被らせないこと。
+ */
+.skill-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.skill-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #9aa4b2;
+  background: #1b2029;
+  border: 1px dashed #4c586a;
+  border-radius: 10px;
+}
+
+.skill-slot.filled { color: #e8e8e8; border-style: solid; border-color: #e0c060; background: #262317; }
+.skill-slot.locked { opacity: 0.45; }
+
+.bag-grid.preview { pointer-events: none; }
+.warn-chip { color: #e08a3c; font-weight: 700; }
+
+.empty-chip {
+  display: inline-flex;
+  padding: 10px;
+  opacity: 0.4;
+}
+
+/* --- ダンジョン --- */
+
+.dungeon-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  text-align: left;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 10px;
+}
+
+.d-main { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.d-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-variant-numeric: tabular-nums; }
+.skulls { display: flex; gap: 2px; opacity: 0.75; }
+
+/* わざを選ぶ小窓 */
+.picker {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #171b21;
+  border: 1px solid #2a2e35;
+  border-radius: 10px;
+}
+
+.picker .skill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.picker .skill-row.on { border-color: #e0c060; background: #262317; }
