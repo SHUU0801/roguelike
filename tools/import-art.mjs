@@ -19,13 +19,33 @@
  *
  * 絵の中身を加工はしない。切って並べ替えるだけ。
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePng, encodePng } from './png.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SRC = resolve(here, '../art/source/characters.png');
+const SRC_DIR = resolve(here, '../art/source');
+
+/**
+ * 元絵を探す。
+ *
+ * characters.png が本命だが、**名前が違っても拾う。**
+ * 「characters (1).png」のまま置かれて動かない、で1往復するのが無駄なので、
+ * art/source に PNG が1枚だけあればそれを使う。
+ */
+function findSource() {
+  const named = resolve(SRC_DIR, 'characters.png');
+  if (existsSync(named)) return named;
+  if (!existsSync(SRC_DIR)) return null;
+  const pngs = readdirSync(SRC_DIR).filter((f) => f.toLowerCase().endsWith('.png'));
+  if (pngs.length === 1) return resolve(SRC_DIR, pngs[0]);
+  if (pngs.length > 1) {
+    console.log(`PNG が ${pngs.length} 枚ある。1枚にするか characters.png という名前にする:`);
+    for (const f of pngs) console.log(`  ${f}`);
+  }
+  return null;
+}
 
 /** 絵の並び順。一覧の上から順に、ゲーム側の職業 id へ対応づける */
 const JOBS = ['warrior', 'rogue', 'mage', 'cleric'];
@@ -125,15 +145,17 @@ function tighten(img, x0, x1, y0, y1) {
 /* ── 本体 ──────────────────────────────────────────── */
 
 function main() {
-  if (!existsSync(SRC)) {
-    console.log(`元絵が無い: ${SRC}`);
+  const src = findSource();
+  if (!src) {
+    console.log(`元絵が無い: ${resolve(SRC_DIR, 'characters.png')}`);
     console.log('この場所に1枚絵を置いてから、もう一度走らせる。');
     process.exitCode = 1;
     return;
   }
 
-  const img = decodePng(readFileSync(SRC));
-  console.log(`元絵: ${img.width}x${img.height}`);
+  const img = decodePng(readFileSync(src));
+  console.log(`元絵: ${src}`);
+  console.log(`大きさ: ${img.width}x${img.height}`);
 
   // 高さで「128 の段」と「16 の段」を見分ける。ラベルの文字は高さが合わないので落ちる
   const all = bands(rowInk(img));
