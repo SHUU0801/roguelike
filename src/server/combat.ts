@@ -1,5 +1,6 @@
 import { speciesOf } from '../shared/monsters';
-import type { Actor, GameState } from '../shared/types';
+import { BLESS_BONUS } from '../shared/skills';
+import { hasEffect, type Actor, type GameState } from '../shared/types';
 import { pushLog } from './game';
 import { applyMend, awardExp, expFor } from './levels';
 import { randInt } from './random';
@@ -20,12 +21,15 @@ export function calcDamage(
   attacker: Actor,
   defender: Actor,
   opts: { pvp: boolean },
+  turn?: number,
 ): number {
   // 乱数を加算ではなく振れ幅にする。
   // 旧: max(1, atk-def) + randInt(0,2) だと、加算項が def で減らないため
   // 防御力に天井ができていた（盾2枚目の効果が数値上ゼロ）。
   // この形なら def が最後まで効き、対戦の確定値が協力の中央値と一致する。
-  const base = attacker.atk - defender.def;
+  // 挑発やまもりのうたの上乗せ。turn が無い呼び方（単体テスト）では素の防御だけ見る
+  const bonus = turn === undefined || !hasEffect(defender, 'guard', turn) ? 0 : BLESS_BONUS + 1;
+  const base = attacker.atk - (defender.def + bonus);
   if (opts.pvp) return Math.max(1, base); // 対戦: 確定値
   return Math.max(1, base + randInt(-1, 1)); // 協力: 少し振れてドラマになる
 }
@@ -40,7 +44,14 @@ export function damage(
   amount: number,
   attacker?: Actor,
 ): void {
-  defender.hp = Math.max(0, defender.hp - amount);
+  // 盾の構えは「受けるダメージ」に効く。毒や松明切れにも効かせる。
+  // 攻撃にだけ効かせると、同じ「減る」でも理由によって効いたり効かなかったりして
+  // 画面から仕組みが読み取れなくなる
+  const dealt = hasEffect(defender, 'bulwark', state.turn)
+    ? Math.max(1, Math.ceil(amount / 2))
+    : amount;
+
+  defender.hp = Math.max(0, defender.hp - dealt);
 
   const name = speciesOf(defender.speciesId).name;
   // 攻撃1回で2行出すと、表示枠から自分の与ダメージが押し出されて消える。
@@ -48,8 +59,8 @@ export function damage(
   pushLog(
     state,
     attacker
-      ? `${speciesOf(attacker.speciesId).name} → ${name} ${amount}ダメージ`
-      : `${name}に${amount}ダメージ`,
+      ? `${speciesOf(attacker.speciesId).name} → ${name} ${dealt}ダメージ`
+      : `${name}に${dealt}ダメージ`,
   );
 
   if (defender.hp === 0) {
@@ -72,5 +83,20 @@ export function attack(
   defender: Actor,
   opts: { pvp: boolean } = { pvp: false },
 ): void {
-  damage(state, defender, calcDamage(attacker, defender, opts), attacker);
+  damage(state, defender, calcDamage(attacker, defender, opts, state.turn), attacker);
+}
+
+/**
+ * 不意打ち。気づいていない敵を殴ったときの一撃。
+ *
+ * 倍率を掛けるだけでなく、**その敵のそのターンの行動を奪う**のが本体
+ * （resolve.ts が stun を付ける）。これが無いと、背後を取っても
+ * 結局そのターンに殴り返されて、忍び寄る意味が半分になる。
+ */
+export const SNEAK_MULTIPLIER = 2;
+
+export function sneakAttack(state: GameState, attacker: Actor, defender: Actor): void {
+  const base = calcDamage(attacker, defender, { pvp: false }, state.turn);
+  pushLog(state, '背後から不意を突いた！');
+  damage(state, defender, base * SNEAK_MULTIPLIER, attacker);
 }

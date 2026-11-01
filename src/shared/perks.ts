@@ -14,7 +14,11 @@
  * 運が判断を生む側に回っているぶんには入れていい。
  */
 
+import type { JobId } from './jobs';
+import { SKILLS, type SkillId } from './skills';
+
 export type PerkId =
+  // どの職業にも出る
   | 'vitality'
   | 'power'
   | 'guard'
@@ -22,12 +26,25 @@ export type PerkId =
   | 'swift'
   | 'focus'
   | 'mend'
-  | 'surge';
+  | 'surge'
+  // 職業ごと。新しいわざを覚える
+  | 'learn_taunt'
+  | 'learn_bulwark'
+  | 'learn_vanish'
+  | 'learn_venom'
+  | 'learn_bolt'
+  | 'learn_frost'
+  | 'learn_bless'
+  | 'learn_smite';
 
 export type PerkDef = {
   name: string;
   desc: string;
   glyph: string;
+  /** あるとその職業にしか出ない */
+  job?: JobId;
+  /** あると新しいわざを覚える */
+  learn?: SkillId;
   /**
    * 同じカードを取れる上限。
    *
@@ -38,6 +55,19 @@ export type PerkDef = {
    */
   maxStacks: number;
 };
+
+/** わざを覚えるカードの定義を、わざの表から組み立てる。二重に書かないため */
+function skillCard(job: JobId, skill: SkillId): PerkDef {
+  const def = SKILLS[skill];
+  return {
+    name: `${def.name}を覚える`,
+    desc: def.desc,
+    glyph: def.glyph,
+    job,
+    learn: skill,
+    maxStacks: 1,
+  };
+}
 
 export const PERKS = {
   vitality: {
@@ -88,6 +118,24 @@ export const PERKS = {
     glyph: '🌟',
     maxStacks: 99,
   },
+
+  /*
+   * ここから下は職業ごとのカード。新しいわざを覚える。
+   *
+   * 能力値だけのカードだと、どの職業も同じ育ち方をする。
+   * わざが増えれば手札そのものが変わるので、
+   * 同じ魔法使いでも「いなずま型」と「こおり型」に分かれる。
+   *
+   * maxStacks は 1。覚えたら出てこない（levels.ts が取り除く）。
+   */
+  learn_taunt: skillCard('warrior', 'taunt'),
+  learn_bulwark: skillCard('warrior', 'bulwark'),
+  learn_vanish: skillCard('rogue', 'vanish'),
+  learn_venom: skillCard('rogue', 'venom'),
+  learn_bolt: skillCard('mage', 'bolt'),
+  learn_frost: skillCard('mage', 'frost'),
+  learn_bless: skillCard('cleric', 'bless'),
+  learn_smite: skillCard('cleric', 'smite'),
 } as const satisfies Record<PerkId, PerkDef>;
 
 export const PERK_IDS = Object.keys(PERKS) as PerkId[];

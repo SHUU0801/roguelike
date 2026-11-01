@@ -5,6 +5,7 @@
 
 import type { JobId } from './jobs';
 import type { PerkId } from './perks';
+import type { EffectId, SkillId } from './skills';
 
 export type TileKind = 'wall' | 'floor' | 'stairs';
 
@@ -88,15 +89,43 @@ export type Actor = {
    */
   slot: number;
 
+  /**
+   * 向いている方向。
+   *
+   * モンスターが使う。背後から忍び寄れるようにするために要る
+   * （06_職業とレベルの設計.md §8）。プレイヤーは向きを持たない：
+   * スマホで向きを変える操作を足すとボタンがもう1つ要るうえ、
+   * タップで歩くこのゲームでは「向きを変えるだけのターン」が苦行になる。
+   */
+  facing: Dir;
+
+  /**
+   * こちらに気づいているか。モンスターが使う。
+   *
+   * 気づいていない敵は追ってこないし、殴られても1ターン反撃できない。
+   * 「ぶつかったら必ず殴り返される」を無くすための中心。
+   */
+  aware: boolean;
+
+  /**
+   * 一時的な状態 → それが切れるターン。
+   * 毒・凍結・隠密・防御上昇をここにまとめる（shared/skills.ts の EffectId）。
+   */
+  effects: Partial<Record<EffectId, number>>;
+
   // --- ここから下はプレイヤーだけが使う ---
 
   /** 職業。ロビーで選ぶ。選ばないまま始めたら戦士になる */
   job: JobId | null;
+
+  /** 覚えているわざ。職業の基本わざ1つから始まり、カードで増える */
+  skills: SkillId[];
+
+  /** わざ → 次に使えるターン。わざごとに別々に待つ */
+  cooldowns: Partial<Record<SkillId, number>>;
   level: number;
   /** 今のレベルの中での経験値。レベルが上がるたび 0 に戻る */
   exp: number;
-  /** 職業スキルが次に使えるターン。state.turn がこれ以上なら使える */
-  skillReadyAt: number;
   /** まだカードを選んでいないレベルアップの回数。溜められる */
   pendingLevels: number;
   /**
@@ -170,8 +199,8 @@ export type Intent =
   | { type: 'drop'; instanceId: string }
   /** 隣で倒れている仲間を起こす。自分の最大HPを払う */
   | { type: 'revive' }
-  /** 職業スキル。職業ごとに1つなので、どれを使うかの指定は要らない */
-  | { type: 'skill' }
+  /** わざ。覚えているものが複数あるので、どれを使うかを指定する */
+  | { type: 'skill'; skillId: string }
   | { type: 'descend' }
   | { type: 'wait' };
 
@@ -203,6 +232,19 @@ export const REVIVE_COST = 4;
 export function tileAt(floor: Floor, x: number, y: number): TileKind {
   if (x < 0 || y < 0 || x >= floor.width || y >= floor.height) return 'wall';
   return floor.tiles[y * floor.width + x];
+}
+
+/** その状態が今効いているか。値は「このターンまで」 */
+export function hasEffect(actor: Actor, id: EffectId, turn: number): boolean {
+  const until = actor.effects[id];
+  return until !== undefined && turn <= until;
+}
+
+/** 状態を付ける。すでに付いているときは長いほうを残す */
+export function addEffect(actor: Actor, id: EffectId, turn: number, lasts: number): void {
+  const until = turn + lasts;
+  const current = actor.effects[id];
+  actor.effects[id] = current === undefined ? until : Math.max(current, until);
 }
 
 /** そのマスが一度でも見えたか（地形の記憶） */

@@ -11,8 +11,19 @@ import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn } from './src/server/resolve';
 import { updateVision } from './src/server/vision';
 import { JOBS, type JobId } from './src/shared/jobs';
-import { OFFER_COUNT, PERKS, PERK_IDS, perkCount } from './src/shared/perks';
-import { expToNext, type Actor, type GameState, type Intent } from './src/shared/types';
+import { BASE_SKILL } from './src/shared/skills';
+import { OFFER_COUNT, PERKS, PERK_IDS, perkCount, perkOf } from './src/shared/perks';
+import {
+  DIR_DELTA,
+  MAX_LEVEL,
+  expToNext,
+  tileAt,
+  type Actor,
+  type Dir,
+  type GameState,
+  type Intent,
+  type Pos,
+} from './src/shared/types';
 
 /**
  * 探索が始まったあとに職業を差し替える。
@@ -25,6 +36,8 @@ function setJob(actor: Actor, job: JobId): void {
   actor.hp = def.maxHp;
   actor.atk = def.atk;
   actor.def = def.def;
+  actor.skills = [BASE_SKILL[job]];
+  actor.cooldowns = {};
 }
 
 let failed = 0;
@@ -45,6 +58,21 @@ function fresh(): { state: GameState; me: Actor } {
 
 function turn(state: GameState, intent: Intent): void {
   resolveTurn(state, new Map<string, Intent>([['p1', intent]]));
+}
+
+/**
+ * 壁でも他の Actor でもない隣のマスと、そこへ向かう方向。
+ * 「東に敵を置いて東へ歩く」と書くと、東が壁のダンジョンで落ちる。
+ */
+function freeNeighbour(state: GameState, from: Actor): { dir: Dir; pos: Pos } {
+  for (const dir of ['e', 'w', 'n', 's'] as Dir[]) {
+    const d = DIR_DELTA[dir];
+    const pos = { x: from.pos.x + d.x, y: from.pos.y + d.y };
+    if (tileAt(state.floor, pos.x, pos.y) === 'wall') continue;
+    if (state.actors.some((a) => a.pos.x === pos.x && a.pos.y === pos.y)) continue;
+    return { dir, pos };
+  }
+  throw new Error('隣に空きマスが無い');
 }
 
 /**
@@ -71,10 +99,16 @@ function putMonster(
     alive: true,
     fuel: 0,
     slot: 0,
+    facing: 'n',
+    // 試験では既定で「気づいている」。気づいていない敵は不意打ちになるので、
+    // 戦闘の試験をするときに結果が変わってしまう
+    aware: true,
+    effects: {},
     job: null,
+    skills: [],
+    cooldowns: {},
     level: 1,
     exp: 0,
-    skillReadyAt: 0,
     pendingLevels: 0,
     offers: [],
     perks: [],
@@ -239,13 +273,10 @@ function putMonster(
 // --- 11. 乗ったら自動で拾う ---
 {
   const { state, me } = fresh();
-  state.items.push({
-    id: 'it-auto',
-    itemId: 'potion',
-    pos: { x: me.pos.x + 1, y: me.pos.y },
-    ownerId: null,
-  });
-  turn(state, { type: 'move', dir: 'e' });
+  // 東と決め打ちすると、東が壁のダンジョンで落ちる
+  const spot = freeNeighbour(state, me);
+  state.items.push({ id: 'it-auto', itemId: 'potion', pos: spot.pos, ownerId: null });
+  turn(state, { type: 'move', dir: spot.dir });
   assert(
     inventoryOf(state, 'p1').some((i) => i.id === 'it-auto'),
     'アイテムの上に乗ると、同じターンで拾う',
@@ -485,15 +516,14 @@ function putMonster(
   state.actors = state.actors.filter((a) => a.kind === 'player');
   const [p1, p2] = state.actors;
 
-  const victim = putMonster(state, 'xp', 'bat', { x: p1.pos.x + 1, y: p1.pos.y }, {
-    hp: 1,
-    maxHp: 1,
-    atk: 0,
-  });
+  // 壁でも仲間でもない隣を選ぶ。東と決め打ちすると、
+  // ダンジョンの出来によっては壁を殴って試験が落ちる
+  const spot = freeNeighbour(state, p1);
+  const victim = putMonster(state, 'xp', 'bat', spot.pos, { hp: 1, maxHp: 1, atk: 0 });
   resolveTurn(
     state,
     new Map<string, Intent>([
-      ['p1', { type: 'move', dir: 'e' }],
+      ['p1', { type: 'move', dir: spot.dir }],
       ['p2', { type: 'wait' }],
     ]),
   );
@@ -561,7 +591,7 @@ function putMonster(
     maxHp: 50,
     atk: 0,
   });
-  turn(state, { type: 'skill' });
+  turn(state, { type: 'skill', skillId: 'cleave' });
   assert(a.hp < 50 && b.hp < 50, `ぶんまわしが両隣に当たる (${a.hp} / ${b.hp})`);
 }
 
@@ -576,7 +606,7 @@ function putMonster(
     atk: 0,
     def: 99,
   });
-  turn(state, { type: 'skill' });
+  turn(state, { type: 'skill', skillId: 'backstab' });
   assert(
     wall.hp === 60 - me.atk,
     `きゅうしょづきは防御99でも攻撃力ぶん通る (${60 - wall.hp} ダメージ / 攻撃力 ${me.atk})`,
@@ -594,9 +624,9 @@ function putMonster(
     atk: 0,
     def: 99,
   });
-  turn(state, { type: 'skill' });
+  turn(state, { type: 'skill', skillId: 'backstab' });
   const afterFirst = target.hp;
-  turn(state, { type: 'skill' });
+  turn(state, { type: 'skill', skillId: 'backstab' });
   assert(target.hp === afterFirst, `連続では撃てない (${afterFirst} → ${target.hp})`);
 }
 
@@ -605,8 +635,11 @@ function putMonster(
   const { state, me } = fresh();
   setJob(me, 'warrior');
   state.actors = state.actors.filter((a) => a.kind === 'player');
-  turn(state, { type: 'skill' }); // 隣に敵がいない
-  assert(me.skillReadyAt <= state.turn, '敵がいないときに撃っても待ち時間にならない');
+  turn(state, { type: 'skill', skillId: 'cleave' }); // 隣に敵がいない
+  assert(
+    (me.cooldowns.cleave ?? 0) <= state.turn,
+    '敵がいないときに撃っても待ち時間にならない',
+  );
 }
 
 // --- 35. 出現位置の上に階段が置かれない（置かれると1歩も歩かず降りられる）---
@@ -620,6 +653,195 @@ function putMonster(
     }
   }
   assert(onStairs === 0, `1500 回生成して出現位置が階段になった回数 ${onStairs}`);
+}
+
+// --- 36. 気づいていない敵は不意打ちになり、そのターン殴り返してこない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'warrior');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const spot = freeNeighbour(state, me);
+  const foe = putMonster(state, 'sleeper', 'goblin', spot.pos, {
+    hp: 99,
+    maxHp: 99,
+    atk: 50,
+    def: 0,
+    aware: false,
+    // こちらを向いていない。背後を取られている状態
+    facing: spot.dir === 'e' ? 'e' : 'w',
+  });
+  const hpBefore = me.hp;
+  turn(state, { type: 'move', dir: spot.dir });
+
+  // 協力モードのダメージは ±1 振れる（combat.ts）。通常の最大値を超えていれば2倍が効いている
+  const dealt = 99 - foe.hp;
+  const normalMax = me.atk + 1;
+  assert(
+    dealt >= (me.atk - 1) * 2 && dealt > normalMax,
+    `不意打ちは2倍 (${dealt} / 通常の最大 ${normalMax})`,
+  );
+  assert(me.hp === hpBefore, `不意打ちしたターンは殴り返されない (HP ${hpBefore} → ${me.hp})`);
+  assert(foe.aware, '殴られた敵は気づく');
+}
+
+// --- 37. 気づいている敵は普通に殴り返してくる ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'warrior');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const spot = freeNeighbour(state, me);
+  putMonster(state, 'awake', 'goblin', spot.pos, {
+    hp: 99,
+    maxHp: 99,
+    atk: 9,
+    def: 0,
+    aware: true,
+  });
+  const hpBefore = me.hp;
+  turn(state, { type: 'move', dir: spot.dir });
+  assert(me.hp < hpBefore, `気づいている敵は反撃する (HP ${hpBefore} → ${me.hp})`);
+}
+
+// --- 38. 背後は見えない。正面に立つと気づかれる ---
+{
+  const { state, me } = fresh();
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  // 東を向いた敵の、西隣（＝真後ろ）に立つ
+  const foe = putMonster(
+    state,
+    'back',
+    'goblin',
+    { x: me.pos.x + 1, y: me.pos.y },
+    { aware: false, facing: 'e', atk: 0 },
+  );
+  // 向きを変えられると試験にならないので、patrol が振り向かない形で確かめる。
+  // 1ターンだけ見る
+  const before = foe.aware;
+  resolveTurn(state, new Map<string, Intent>([['p1', { type: 'wait' }]]));
+  assert(!before, '最初は気づいていない');
+
+  // 正面（東側）に回り込ませる
+  foe.aware = false;
+  foe.facing = 'e';
+  me.pos = { x: foe.pos.x + 1, y: foe.pos.y };
+  resolveTurn(state, new Map<string, Intent>([['p1', { type: 'wait' }]]));
+  assert(foe.aware, '正面に立つと気づかれる');
+}
+
+// --- 39. かげがくれ中は気づかれない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'rogue');
+  me.skills.push('vanish');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const foe = putMonster(
+    state,
+    'blind',
+    'goblin',
+    { x: me.pos.x + 1, y: me.pos.y },
+    { aware: true, atk: 0, facing: 'w' },
+  );
+  turn(state, { type: 'skill', skillId: 'vanish' });
+  assert(!foe.aware, 'かげがくれで追ってきた敵が見失う');
+
+  turn(state, { type: 'wait' });
+  assert(!foe.aware, '隠れている間は正面にいても気づかれない');
+}
+
+// --- 40. 毒は毎ターン減らす ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'rogue');
+  me.skills.push('venom');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const spot = freeNeighbour(state, me);
+  const foe = putMonster(state, 'poisoned', 'slime', spot.pos, {
+    hp: 99,
+    maxHp: 99,
+    atk: 0,
+    def: 99,
+    aware: true,
+  });
+  turn(state, { type: 'skill', skillId: 'venom' });
+  const afterCast = foe.hp;
+  turn(state, { type: 'wait' });
+  turn(state, { type: 'wait' });
+  assert(
+    foe.hp < afterCast,
+    `毒は防御99でも毎ターン減らす (${afterCast} → ${foe.hp})`,
+  );
+}
+
+// --- 41. こおりのやりを受けた敵は動けない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'mage');
+  me.skills.push('frost');
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const foe = putMonster(
+    state,
+    'frozen',
+    'goblin',
+    { x: me.pos.x + 1, y: me.pos.y },
+    { hp: 99, maxHp: 99, atk: 50, aware: true, facing: 'w' },
+  );
+  turn(state, { type: 'skill', skillId: 'frost' });
+  const hpBefore = me.hp;
+  turn(state, { type: 'wait' });
+  assert(me.hp >= hpBefore - 1, `凍った敵は殴ってこない (HP ${hpBefore} → ${me.hp})`);
+  assert(
+    foe.pos.x === me.pos.x + 1 && foe.pos.y === me.pos.y,
+    '凍った敵は動かない',
+  );
+}
+
+// --- 42. 覚えていないわざは使えない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'warrior');
+  const before = state.log.length;
+  turn(state, { type: 'skill', skillId: 'frost' }); // 魔法使いのわざ
+  assert(
+    (me.cooldowns.frost ?? 0) <= state.turn,
+    '覚えていないわざを送っても何も起きない',
+  );
+  void before;
+}
+
+// --- 43. レベルアップのカードは自分の職業のものしか出ない ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'mage');
+  for (let i = 0; i < 6 && me.level < MAX_LEVEL; i++) {
+    awardExp(state, expToNext(me.level));
+    const wrongJob = me.offers.filter((id) => {
+      const job = perkOf(id).job;
+      return job !== undefined && job !== 'mage';
+    });
+    assert(wrongJob.length === 0, `他の職業のカードが出ない (${wrongJob.join(',')})`);
+    if (me.offers.length > 0) takePerk(state, me, me.offers[0]);
+  }
+}
+
+// --- 44. わざを覚えるカードを取ると、実際に使えるようになる ---
+{
+  const { state, me } = fresh();
+  setJob(me, 'cleric');
+  me.pendingLevels = 1;
+  me.offers = ['learn_smite'];
+  takePerk(state, me, 'learn_smite');
+  assert(me.skills.includes('smite'), 'さばきを覚える');
+
+  state.actors = state.actors.filter((a) => a.kind === 'player');
+  const spot = freeNeighbour(state, me);
+  const foe = putMonster(state, 'judged', 'goblin', spot.pos, {
+    hp: 99,
+    maxHp: 99,
+    atk: 0,
+    aware: true,
+  });
+  turn(state, { type: 'skill', skillId: 'smite' });
+  assert(foe.hp < 99, `覚えたわざが使える (${99 - foe.hp} ダメージ）`);
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

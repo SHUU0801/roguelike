@@ -1,5 +1,6 @@
 import { ITEMS, type ItemId } from '../shared/items';
 import { JOB_IDS, jobOf, type JobId } from '../shared/jobs';
+import { BASE_SKILL } from '../shared/skills';
 import { SPECIES, type SpeciesId } from '../shared/monsters';
 import {
   FUEL_START,
@@ -108,10 +109,14 @@ export function addPlayer(state: GameState, id: string): void {
     alive: true,
     fuel: FUEL_START,
     slot,
+    facing: 'n',
+    aware: true, // プレイヤーは常に「起きている」。向きと気づきは敵だけの仕組み
+    effects: {},
     job,
+    skills: [BASE_SKILL[job]],
+    cooldowns: {},
     level: 1,
     exp: 0,
-    skillReadyAt: 0,
     pendingLevels: 0,
     offers: [],
     perks: [],
@@ -138,6 +143,9 @@ export function chooseJob(state: GameState, id: string, job: JobId): void {
   actor.hp = def.maxHp;
   actor.atk = def.atk;
   actor.def = def.def;
+  // 覚えているわざも入れ替える。前の職業のわざを持ち越させない
+  actor.skills = [BASE_SKILL[job]];
+  actor.cooldowns = {};
   pushLog(state, `${actor.slot}番は${def.name}を選んだ`);
 }
 
@@ -242,12 +250,18 @@ function spawnMonster(state: GameState, speciesId: SpeciesId, pos: Pos): void {
     alive: true,
     fuel: 0, // モンスターは松明を持たない
     slot: 0,
+    // 向きはばらばらに。全部同じ方を向いていると、どの部屋も同じ攻略になる
+    facing: pick(['n', 's', 'e', 'w'] as const) ?? 'n',
+    // 最初は誰にも気づいていない。だから忍び寄れる
+    aware: false,
+    effects: {},
     // 以下はプレイヤー専用。型を分けないと決めてある（設計書 §3-1）ので、
     // モンスターは使わない値で埋めておく
     job: null,
+    skills: [],
+    cooldowns: {},
     level: 1,
     exp: 0,
-    skillReadyAt: 0,
     pendingLevels: 0,
     offers: [],
     perks: [],

@@ -10,12 +10,13 @@ import {
   type Intent,
   type Pos,
 } from '../shared/types';
-import { FUEL_DANGER, FUEL_WARN, REVIVE_COST } from '../shared/types';
-import { monsterAct } from './ai';
-import { attack, damage } from './combat';
+import { FUEL_DANGER, FUEL_WARN, REVIVE_COST, hasEffect } from '../shared/types';
+import { isSkillId } from '../shared/skills';
+import { alertOnHit, monsterAct } from './ai';
+import { attack, damage, sneakAttack } from './combat';
 import { applyItem } from './effects';
 import { MAX_INVENTORY, descend, inventoryOf, pushLog } from './game';
-import { useSkill } from './skills';
+import { tickEffects, useSkill } from './skills';
 import { updateVision } from './vision';
 
 /**
@@ -55,6 +56,9 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
 
   // c. 松明が燃える。時間そのものを資源にするのがこの1行の目的
   burnFuel(state);
+
+  // c-2. 毒などの持続ダメージ
+  tickEffects(state);
 
   // d. 死亡の片付けと勝敗判定
   cleanUpDead(state);
@@ -99,6 +103,12 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
   const actor = state.actors.find((a) => a.id === actorId);
   if (!actor) return;
 
+  // 凍結・ひるみ。わざで敵を止められる以上、対戦で自分も止まる形にしておく
+  if (actor.alive && hasEffect(actor, 'stun', state.turn)) {
+    pushLog(state, `${actor.slot}番は動けない`);
+    return;
+  }
+
   // 倒れた人は歩くことしかできない。
   // 完全な無入力にすると、最初の5分で死んだ人が25分ただ見ているだけになる。
   // 視界は生きている人と共有されるので、偵察役として仕事が残る。
@@ -139,7 +149,13 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
           pushLog(state, '仲間がいる');
           return;
         }
-        attack(state, actor, blocker, { pvp: false });
+        // 気づいていない相手には不意打ち。倍のダメージを与え、
+        // alertOnHit がその敵のこのターンの行動を奪う。
+        // 「ぶつかったら必ず殴り返される」を無くすのがこの2行
+        const unaware = blocker.kind === 'monster' && !blocker.aware;
+        if (unaware) sneakAttack(state, actor, blocker);
+        else attack(state, actor, blocker, { pvp: false });
+        alertOnHit(state, blocker, actor.pos);
         return;
       }
 
@@ -147,10 +163,14 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
       // 隣にいる敵から離れると、その敵が1回だけ無条件で殴る。
       // これが無いと「3発殴って不利だと分かったら無料で撤退」ができてしまい、
       // 戦闘を始めること自体が無リスクになる。退却に値段を付ける。
+      // 気づいていない敵と、動けない敵は追撃してこない。
+      // 寝ている敵の横をすり抜けられないと、忍び寄る意味が消える
       const leaving = state.actors.filter(
         (a) =>
           a.alive &&
           isHostile(actor, a) &&
+          (a.kind !== 'monster' || a.aware) &&
+          !hasEffect(a, 'stun', state.turn) &&
           manhattan(a.pos, actor.pos) === 1 &&
           manhattan(a.pos, { x: nx, y: ny }) > 1,
       );
@@ -248,9 +268,10 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
     }
 
     case 'skill': {
+      if (!isSkillId(intent.skillId)) return;
       // 使えなかったときは待ち時間を進めない（skills.ts が false を返す）。
       // 「隣に敵がいないのに撃って、空振りのまま5ターン待つ」を作らないため
-      useSkill(state, actor);
+      useSkill(state, actor, intent.skillId);
       return;
     }
 

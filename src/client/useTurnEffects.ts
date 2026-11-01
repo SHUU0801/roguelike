@@ -31,6 +31,8 @@ export type TurnEffects = {
   /** Actor id → その Actor に付ける動き */
   effects: Map<string, Effect>;
   ghosts: Ghost[];
+  /** このターンに「こちらに気づいた」敵。❗ を出すのに使う */
+  noticed: Set<string>;
   /** 自分が殴られたか。画面全体を赤く光らせるのに使う */
   selfHurt: boolean;
   /** 誰かが殴られたか（効果音に使う） */
@@ -52,6 +54,7 @@ export type TurnEffects = {
 const EMPTY: TurnEffects = {
   effects: new Map(),
   ghosts: [],
+  noticed: new Set(),
   selfHurt: false,
   anyHit: false,
   selfAttacked: false,
@@ -89,6 +92,8 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
 
     const damaged: Actor[] = [];
     const stayed = new Set<string>();
+    // 気づいていない → 気づいた に変わった敵。サーバーに報告させず差分で拾う
+    const noticed = new Set<string>();
 
     for (const now of state.actors) {
       const was = before.get(now.id);
@@ -103,6 +108,8 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
       } else {
         stayed.add(now.id);
       }
+
+      if (now.kind === 'monster' && !was.aware && now.aware) noticed.add(now.id);
 
       if (now.hp < was.hp) {
         damaged.push(now);
@@ -146,6 +153,7 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
     setFrame({
       effects,
       ghosts,
+      noticed,
       selfHurt,
       anyHit: damaged.length > 0,
       selfAttacked: effects.get(myId ?? "")?.kind === "lunge",

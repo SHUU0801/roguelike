@@ -5,6 +5,7 @@ import { ANIMATED, SHEET, SPRITE_INDEX, TILE_SPRITE, type SpriteId } from '../sh
 import {
   actorAt,
   dirTo,
+  hasEffect,
   itemAt,
   seenAt,
   tileAt,
@@ -182,6 +183,10 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
                     'sprite',
                     ANIMATED.has(topSprite) ? 'anim' : '',
                     occupant?.id === myId ? 'self' : '',
+                    // 種族ごとに攻撃モーションを変えるための目印
+                    occupant?.kind === 'monster' ? `s-${occupant.speciesId}` : '',
+                    // まだ気づいていない敵は、ふわふわしているだけにする
+                    occupant?.kind === 'monster' && !occupant.aware ? 'unaware' : '',
                     effect ? effect.kind : '',
                   ]
                     .filter(Boolean)
@@ -199,6 +204,27 @@ export function FloorView({ state, myId, turnEffects, onMove }: Props) {
           {/* 誰が誰かの目印。全員が同じ見た目なので番号が要る */}
           {(occupant?.kind === 'player' || fallen) && (
             <span className="slot">{(occupant ?? fallen)?.slot}</span>
+          )}
+
+          {/*
+            敵の向きと状態。
+            向きが見えないと「背後から忍び寄る」が運になる。
+            向きを画面に出して初めて、回り込みが判断になる。
+          */}
+          {occupant?.kind === 'monster' && (
+            <span className={`facing f-${occupant.facing}`} />
+          )}
+          {occupant?.kind === 'monster' && (
+            <span className="mstate">
+              {hasEffect(occupant, 'stun', state.turn)
+                ? '❄'
+                : turnEffects.noticed.has(occupant.id)
+                  ? '❗'
+                  : occupant.aware
+                    ? ''
+                    : '💤'}
+              {hasEffect(occupant, 'poison', state.turn) && '☠'}
+            </span>
           )}
 
           {/* 敵の残り体力。絵文字だけだと「あと何発で倒せるか」が分からない */}

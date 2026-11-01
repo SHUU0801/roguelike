@@ -38,6 +38,7 @@ function useSecondsLeft(deadlineAt: number | null): number | null {
 export function App() {
   const conn = useGame();
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
   /** 「あとで」で閉じたレベルアップ画面。溜まった回数が増えたらまた出す */
@@ -110,7 +111,12 @@ export function App() {
       } else if (e.key === 'g') {
         conn.send({ type: 'pickUp' });
       } else if (e.key === 's') {
-        conn.send({ type: 'skill' });
+        // 使える最初のわざ。一覧を開かずに撃てるようにしておく
+        const mine = conn.state.actors.find((a) => a.id === conn.myId);
+        const ready = mine?.skills.find(
+          (id) => (mine.cooldowns[id] ?? 0) <= conn.state.turn,
+        );
+        if (ready) conn.send({ type: 'skill', skillId: ready });
       }
     };
 
@@ -181,6 +187,7 @@ export function App() {
   const act = (intent: Intent) => {
     send(intent);
     if (intent.type === 'useItem') setInventoryOpen(false);
+    if (intent.type === 'skill') setSkillsOpen(false);
   };
 
   return (
@@ -317,11 +324,20 @@ export function App() {
         canRevive={canRevive}
         playing={playing}
         inventoryOpen={inventoryOpen}
-        onToggleInventory={() => setInventoryOpen((v) => !v)}
+        onToggleInventory={() => {
+          setSkillsOpen(false);
+          setInventoryOpen((v) => !v);
+        }}
+        skillsOpen={skillsOpen}
+        onToggleSkills={() => {
+          setInventoryOpen(false);
+          setSkillsOpen((v) => !v);
+        }}
       />
 
       {/* 歩くための十字ボタン。盤に重ねて左下に出す（DPad.tsx に理由） */}
       <DPad
+        hidden={inventoryOpen || skillsOpen}
         disabled={!playing && !(me !== undefined && !me.alive && state.phase === 'playing')}
         onMove={(dir) => act({ type: 'move', dir })}
         onWait={() => act({ type: 'wait' })}

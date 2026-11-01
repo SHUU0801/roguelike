@@ -116,6 +116,11 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* 下から積む。上から流すと、入りきらない一番新しい行が
+     上下に切れた状態で残る（実機で「冒険者 → コウモリ 5ダメージ」が半分欠けた） */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   /* 左は十字ボタンのぶん空ける。空けないと、小さい端末でログが
      半透明のボタンの裏に回って読めなくなる（実測 375x667 で重なった） */
   padding: 10px 14px 10px 158px;
@@ -403,11 +408,133 @@ button.wide.primary {
   to { transform: scale(0.35) rotate(150deg); opacity: 0; }
 }
 
-/* 呼吸より後に書く。同じ animation プロパティなので、後のほうが勝つ */
-.sprite.moved { animation: slide-in 0.13s linear; }
-.sprite.lunge { animation: lunge 0.22s ease-out; }
-.sprite.hit { animation: shake 0.26s ease-out, blanch 0.26s ease-out; }
-.sprite.dying { animation: die 0.38s ease-in forwards; }
+/*
+ * 歩き。
+ *
+ * 以前は slide-in（滑り込むだけ）だった。絵が平行移動するので、
+ * 歩いているというより氷の上を滑っているように見えた。
+ * 上下に跳ねる動きと、着地でつぶれる動きを足すと「踏み出した」になる。
+ * あわせてコマも1回送る（2コマしかないので、1歩＝1コマ）。
+ */
+@keyframes walk {
+  0% {
+    transform: translate(calc(var(--dx, 0) * -100%), calc(var(--dy, 0) * -100%))
+      scale(1, 1);
+  }
+  45% {
+    transform: translate(calc(var(--dx, 0) * -45%), calc(var(--dy, 0) * -45%))
+      translateY(-16%) scale(0.94, 1.08);
+  }
+  80% {
+    transform: translate(0, 0) scale(1.08, 0.9);
+  }
+  100% {
+    transform: translate(0, 0) scale(1, 1);
+  }
+}
+
+/*
+ * 行動中のアニメは、待機中のアニメより必ず優先させる。
+ *
+ * セレクタを並べているのは詳細度のため。`.sprite.anim.self` は 0,3,0 あるので、
+ * `.sprite.moved`（0,2,0）では後ろに書いても勝てない。
+ * 勝てないと **自キャラだけ歩きも被弾も動かない**。
+ * 実際そうなっていて、自分が動いたときに絵がただ瞬間移動していた。
+ */
+.sprite.moved,
+.sprite.anim.moved,
+.sprite.self.moved,
+.sprite.anim.self.moved {
+  animation:
+    walk 0.2s ease-out,
+    idle-frames 0.2s steps(2, jump-none);
+}
+
+.sprite.lunge,
+.sprite.anim.lunge,
+.sprite.self.lunge,
+.sprite.anim.self.lunge {
+  animation: lunge 0.22s ease-out;
+}
+
+.sprite.hit,
+.sprite.anim.hit,
+.sprite.self.hit,
+.sprite.anim.self.hit {
+  animation: shake 0.26s ease-out, blanch 0.26s ease-out;
+}
+
+.sprite.dying,
+.sprite.anim.dying,
+.sprite.self.dying,
+.sprite.anim.self.dying {
+  animation: die 0.38s ease-in forwards;
+}
+
+/*
+ * 敵ごとの攻撃モーション。
+ *
+ * 全部 lunge（同じ踏み込み）だと、3種類いても殴られ方が1種類に見える。
+ * 動きが違えば、絵を見なくても何に殴られたか分かる。
+ * 種族のクラスは FloorView が付ける。lunge より後に書いて上書きする。
+ */
+
+/* ゴブリン: 一度引いてから叩きつける */
+@keyframes slam {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(calc(var(--dx, 0) * -22%), calc(var(--dy, 0) * -22%)); }
+  55% { transform: translate(calc(var(--dx, 0) * 52%), calc(var(--dy, 0) * 52%)); }
+  100% { transform: translate(0, 0); }
+}
+
+/* コウモリ: 速く2回つつく */
+@keyframes bite {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(calc(var(--dx, 0) * 42%), calc(var(--dy, 0) * 42%)); }
+  40% { transform: translate(0, 0); }
+  60% { transform: translate(calc(var(--dx, 0) * 42%), calc(var(--dy, 0) * 42%)); }
+  100% { transform: translate(0, 0); }
+}
+
+/* スライム: ためてから伸びて、ぶつかって潰れる */
+@keyframes squish {
+  0% { transform: translate(0, 0) scale(1, 1); }
+  30% { transform: translate(0, 0) scale(1.25, 0.72); }
+  60% {
+    transform: translate(calc(var(--dx, 0) * 46%), calc(var(--dy, 0) * 46%))
+      scale(0.8, 1.22);
+  }
+  100% { transform: translate(0, 0) scale(1, 1); }
+}
+
+/* 種族ごとの攻撃。上の共通 lunge（0,4,0 まである）に勝たせるため、
+   こちらも .anim を含めた形で書く */
+.sprite.lunge.s-goblin,
+.sprite.anim.lunge.s-goblin { animation: slam 0.3s ease-in-out; }
+.sprite.lunge.s-bat,
+.sprite.anim.lunge.s-bat { animation: bite 0.34s ease-out; }
+.sprite.lunge.s-slime,
+.sprite.anim.lunge.s-slime { animation: squish 0.38s ease-in-out; }
+
+/* 気づいていない敵。ふわふわ上下するだけにして「止まっている」を見せる */
+@keyframes doze {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8%); }
+}
+
+.sprite.unaware { animation: doze 2.2s ease-in-out infinite; }
+.sprite.anim.unaware {
+  animation:
+    idle-frames 1.6s steps(2, jump-none) infinite,
+    doze 2.2s ease-in-out infinite;
+}
+
+/* 気づかれた瞬間。盤の上で一度だけ跳ねる */
+@keyframes notice-pop {
+  0% { transform: scale(0.4) translateY(40%); opacity: 0; }
+  40% { transform: scale(1.25) translateY(-30%); opacity: 1; }
+  100% { transform: scale(1) translateY(-40%); opacity: 0; }
+}
 
 /* 自分が殴られたら画面全体を赤く光らせる。HP の数字を見張らなくて済む */
 @keyframes hurt-flash {
@@ -1070,4 +1197,35 @@ button.wide.primary {
   color: #14161a;
   background: #7b8694;
   border-radius: 8px;
+}
+
+/* --- 敵の向きと状態 --- */
+
+/*
+ * 向きの印。マスの縁に小さな三角を出す。
+ * スプライトの絵自体を向きごとに4枚用意するのが本筋だが、
+ * 素材を4倍描き足すことになるので、まず読めることを優先した。
+ */
+.facing {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  border: 4px solid transparent;
+}
+
+.facing.f-n { top: 0; left: 50%; margin-left: -4px; border-bottom-color: #d98a5a; border-top-width: 0; }
+.facing.f-s { bottom: 0; left: 50%; margin-left: -4px; border-top-color: #d98a5a; border-bottom-width: 0; }
+.facing.f-w { left: 0; top: 50%; margin-top: -4px; border-right-color: #d98a5a; border-left-width: 0; }
+.facing.f-e { right: 0; top: 50%; margin-top: -4px; border-left-color: #d98a5a; border-right-width: 0; }
+
+/* 💤 / ❗ / ❄ / ☠。マスの左上に小さく重ねる */
+.mstate {
+  position: absolute;
+  top: 0;
+  left: 1px;
+  font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
+  text-shadow: 0 0 3px #000;
 }

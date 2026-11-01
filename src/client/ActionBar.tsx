@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { itemDefOf } from '../shared/items';
-import { jobOf } from '../shared/jobs';
+import { skillOf } from '../shared/skills';
 import type { GameState, Intent, ItemInstance } from '../shared/types';
 
 type Props = {
@@ -16,6 +16,8 @@ type Props = {
   playing: boolean;
   inventoryOpen: boolean;
   onToggleInventory: () => void;
+  skillsOpen: boolean;
+  onToggleSkills: () => void;
 };
 
 /**
@@ -35,6 +37,8 @@ export function ActionBar({
   playing,
   inventoryOpen,
   onToggleInventory,
+  skillsOpen,
+  onToggleSkills,
 }: Props) {
   const players = state.actors.filter((a) => a.kind === 'player');
   const [tab, setTab] = useState<string>(myId);
@@ -48,9 +52,9 @@ export function ActionBar({
   const aliveCount = players.filter((p) => p.alive).length;
 
   const me = players.find((p) => p.id === myId);
-  const skill = jobOf(me?.job ?? null).skill;
-  const skillWait = me ? Math.max(0, me.skillReadyAt - state.turn) : 0;
-  const skillReady = skillWait === 0;
+  const skills = me?.skills ?? [];
+  const waitOf = (id: string) => Math.max(0, (me?.cooldowns[id as never] ?? 0) - state.turn);
+  const anyReady = skills.some((id) => waitOf(id) === 0);
 
   return (
     <>
@@ -111,16 +115,50 @@ export function ActionBar({
         </div>
       )}
 
+      {skillsOpen && (
+        <div className="inventory">
+          {skills.length === 0 ? (
+            <div className="inventory-empty">覚えているわざがない</div>
+          ) : (
+            skills.map((id) => {
+              const def = skillOf(id);
+              const wait = waitOf(id);
+              return (
+                <div key={id} className="inventory-row skill-row">
+                  <span className="glyph">{def.glyph}</span>
+                  <span className="iname">
+                    {def.name}
+                    <span className="sdesc">{def.desc}</span>
+                  </span>
+                  {/* 押せない理由を数字で出す。「押せないボタン」にしない */}
+                  <button
+                    className={wait === 0 ? 'ready' : ''}
+                    disabled={!playing || wait > 0}
+                    onClick={() => onAction({ type: 'skill', skillId: id })}
+                  >
+                    {wait === 0 ? '使う' : `あと${wait}`}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       <div className="actions">
-        {/* 職業スキル。待ち時間が残っている間は残りターン数を出す。
-            「押せないボタン」ではなく「あと何ターンで押せるボタン」にする */}
+        {/*
+          わざは一覧にする。覚えると増えていくので、ボタンを1つずつ足すと
+          375px の横幅がすぐ尽きる。持ち物と同じ形にしておけば、
+          増えても画面の作りが変わらない。
+        */}
         <button
-          className={playing && skillReady ? 'skill ready' : 'skill'}
-          disabled={!playing || !skillReady}
-          onClick={() => onAction({ type: 'skill' })}
+          className={[skillsOpen ? 'on' : '', playing && anyReady ? 'ready' : '']
+            .filter(Boolean)
+            .join(' ')}
+          disabled={!playing || skills.length === 0}
+          onClick={onToggleSkills}
         >
-          {skill.name}
-          {!skillReady && skillWait > 0 && <span className="cd">{skillWait}</span>}
+          わざ ({skills.length})
         </button>
 
         <button

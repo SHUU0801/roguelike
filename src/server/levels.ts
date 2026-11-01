@@ -79,10 +79,31 @@ function levelUpWhilePossible(state: GameState, actor: Actor): void {
  * 引きが変われば作戦が変わる。消したいのは「同じ判断をしたのに結果が違う」運。
  */
 export function rollOffers(actor: Actor): PerkId[] {
-  const available = PERK_IDS.filter(
-    (id) => perkCount(actor.perks, id) < PERKS[id].maxStacks,
-  );
-  return shuffle(available).slice(0, OFFER_COUNT);
+  const available = PERK_IDS.filter((id) => {
+    const def = perkOf(id);
+    // 他の職業のカードは出さない
+    if (def.job !== undefined && def.job !== actor.job) return false;
+    // もう覚えているわざは出さない
+    if (def.learn !== undefined && actor.skills.includes(def.learn)) return false;
+    return perkCount(actor.perks, id) < def.maxStacks;
+  });
+
+  /*
+   * 覚えられるわざが残っていれば、3枚のうち1枚は必ずわざにする。
+   *
+   * 完全にシャッフルすると、能力値のカードが8種に対してわざは2種しかないので、
+   * 最後までわざを1つも覚えないまま終わる人が普通に出る。
+   * それだと「職業ごとにわざがほしい」が成立しない。
+   * どのわざが出るかは運のままなので、引きの面白さは残る。
+   */
+  const skillCards = available.filter((id) => perkOf(id).learn !== undefined);
+  const rest = available.filter((id) => perkOf(id).learn === undefined);
+
+  if (skillCards.length === 0) return shuffle(rest).slice(0, OFFER_COUNT);
+
+  const guaranteed = shuffle(skillCards)[0];
+  const others = shuffle(rest).slice(0, OFFER_COUNT - 1);
+  return shuffle([guaranteed, ...others]);
 }
 
 /**
@@ -100,6 +121,12 @@ export function takePerk(state: GameState, actor: Actor, perkId: PerkId): boolea
   actor.perks.push(perkId);
   actor.pendingLevels -= 1;
   actor.offers = [];
+
+  // わざを覚えるカード
+  const learn = perkOf(perkId).learn;
+  if (learn !== undefined && !actor.skills.includes(learn)) {
+    actor.skills.push(learn);
+  }
 
   switch (perkId) {
     case 'vitality':
@@ -119,10 +146,9 @@ export function takePerk(state: GameState, actor: Actor, perkId: PerkId): boolea
       actor.maxHp += 4;
       actor.hp = actor.maxHp;
       break;
-    // swift / focus / mend は能力値ではなく、使うときに perks を数えて効く
-    case 'swift':
-    case 'focus':
-    case 'mend':
+    // swift / focus / mend は能力値ではなく、使うときに perks を数えて効く。
+    // learn_* は上でわざを足しているので、ここですることは無い
+    default:
       break;
   }
 
