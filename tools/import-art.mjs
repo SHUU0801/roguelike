@@ -280,17 +280,21 @@ function extractCell(img, bg, x0, x1, y0, y1) {
  *
  * 横は中央、縦は**下ぞろえ。** 立ち絵も盤の姿も、足元が揃っていないと
  * 並べたとき浮いたり沈んだりして見える。
+ *
+ * **倍率は外から渡す。** 以前は枠に収まるよう1枚ずつ計算していたが、
+ * そうすると**ポーズごとにキャラの大きさが変わる。**
+ * 斬撃のエフェクトで横に広い攻撃の絵は、その分だけ縮められて、
+ * **殴るたびにキャラが小さくなって見えた。**
+ * 同じ職業のコマは同じ倍率で切ること。
  */
-function resampleInto(img, isInk, box, tile, pad) {
+function resampleInto(img, isInk, box, tile, pad, scale) {
   const out = new Uint8Array(tile * tile * 4);
   const sw = box.x1 - box.x0 + 1;
   const sh = box.y1 - box.y0 + 1;
 
-  const avail = tile - pad * 2;
-  const scale = Math.min(avail / sw, avail / sh);
   const dw = Math.max(1, Math.round(sw * scale));
   const dh = Math.max(1, Math.round(sh * scale));
-  const ox = Math.floor((tile - dw) / 2);
+  const ox = Math.round((tile - dw) / 2);
   const oy = tile - pad - dh;
 
   for (let dy = 0; dy < dh; dy++) {
@@ -319,7 +323,10 @@ function resampleInto(img, isInk, box, tile, pad) {
       }
       if (n === 0 || a === 0) continue;
 
-      const d = ((oy + dy) * tile + (ox + dx)) * 4;
+      const px2 = ox + dx;
+      const py2 = oy + dy;
+      if (px2 < 0 || py2 < 0 || px2 >= tile || py2 >= tile) continue; // 枠からはみ出した光は切る
+      const d = (py2 * tile + px2) * 4;
       out[d] = Math.round(r / a);
       out[d + 1] = Math.round(g / a);
       out[d + 2] = Math.round(b / a);
@@ -423,7 +430,26 @@ function main() {
   const portraits = [];
   const boards = [];
 
+  /**
+   * その段の倍率を決める。
+   *
+   * **一番背の高いコマに合わせる。** 幅ではなく高さで決めるのは、
+   * 斬撃や光が横に広がるコマがあるため。幅で決めると、
+   * エフェクトの大きいコマだけキャラが小さくなる。
+   * はみ出した光は枠で切れるが、キャラの大きさが揃うほうが大事。
+   */
+  const scaleFor = (band, tile, pad) => {
+    let tallest = 1;
+    for (let col = 0; col < POSES; col++) {
+      const c = extractCell(img, bg, edges[col], edges[col + 1], band.from, band.to);
+      if (c) tallest = Math.max(tallest, c.box.y1 - c.box.y0 + 1);
+    }
+    return (tile - pad * 2) / tallest;
+  };
+
   JOBS.forEach((job, row) => {
+    const pScale = scaleFor(big[row], PORTRAIT_TILE, 4);
+    const sScale = scaleFor(small[row], BOARD_TILE, 0);
     let got = 0;
     for (let col = 0; col < POSES; col++) {
       const x0 = edges[col];
@@ -431,7 +457,11 @@ function main() {
       const pc = extractCell(img, bg, x0, x1, big[row].from, big[row].to);
       const sc = extractCell(img, bg, x0, x1, small[row].from, small[row].to);
       if (pc) {
-        portraits.push({ row, col, px: resampleInto(img, pc.isInk, pc.box, PORTRAIT_TILE, 4) });
+        portraits.push({
+          row,
+          col,
+          px: resampleInto(img, pc.isInk, pc.box, PORTRAIT_TILE, 4, pScale),
+        });
         got++;
       }
       if (sc) {
@@ -444,7 +474,7 @@ function main() {
          * アニメーションが同じ transform を使っていて喧嘩する。
          * **絵を2通り持つほうが、動きの仕組みを壊さない。**
          */
-        const cell = resampleInto(img, sc.isInk, sc.box, BOARD_TILE, 0);
+        const cell = resampleInto(img, sc.isInk, sc.box, BOARD_TILE, 0, sScale);
         boards.push({ row, col, px: cell });
         boards.push({ row, col: col + POSES, px: mirrorCell(cell, BOARD_TILE) });
       }

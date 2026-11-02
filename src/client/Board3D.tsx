@@ -686,12 +686,16 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           if (attacking) {
             /*
              * 振りかぶり → 振り抜き。
-             * 構えの絵（guard）から斬る絵（attack）へ送ると、
-             * 同じ踏み込みでも「振った」に見える。
+             *
+             * 振りかぶりは**立ち姿（dash）**を使う。
+             * 最初は構えの絵（guard）にしていたが、あれは戦士だと盾を構える絵で、
+             * 盗賊と僧侶は正面を向いた絵だった。職業によって
+             * 「盾を構えてから斬る」「正面を向いてから斬る」になってしまう。
+             * 立ち姿から斬る絵へ送るほうが、4職業とも素直に見える。
              */
             const flip = a.facing === 'w';
             walk = [
-              POSE.guard + (flip ? FLIP_OFFSET : 0),
+              POSE.dash + (flip ? FLIP_OFFSET : 0),
               POSE.attack + (flip ? FLIP_OFFSET : 0),
             ];
           } else {
