@@ -22,7 +22,21 @@ import type { Actor, GameState, Pos } from '../shared/types';
 
 export type Effect =
   | { kind: 'moved'; dx: number; dy: number }
-  | { kind: 'lunge'; dx: number; dy: number }
+  | {
+      kind: 'lunge';
+      dx: number;
+      dy: number;
+      /**
+       * 殴り返されたか。
+       *
+       * 殴り合いでは両方が同じターンにダメージを受ける。
+       * 以前は「殴られた側を優先」して踏み込みを捨てていたので、
+       * **隣の敵と殴り合うと自分の振りが一度も見えなかった。**
+       * 攻撃モーションが無いように感じるのはこれが原因だった。
+       * 3Dでは振りと被弾を重ねられるので、両方を持たせる。
+       */
+      hurt?: boolean;
+    }
   | { kind: 'hit' };
 
 /** 盤から消えた Actor を、消えるアニメーションの間だけ描くための残像 */
@@ -141,11 +155,13 @@ export function useTurnEffects(state: GameState | null, myId: string | null): Tu
         if (other.kind === target.kind) continue; // 仲間同士は殴らない
         if (!stayed.has(other.id)) continue;
         if (!isAdjacent(other.pos, target.pos)) continue;
-        if (effects.get(other.id)?.kind === 'hit') continue; // 殴られた側を優先する
+        // 殴り返された側も、振り自体は見せる（hurt で重ねる）
+        const hurt = effects.get(other.id)?.kind === 'hit';
         effects.set(other.id, {
           kind: 'lunge',
           dx: target.pos.x - other.pos.x,
           dy: target.pos.y - other.pos.y,
+          ...(hurt ? { hurt: true } : {}),
         });
       }
     }

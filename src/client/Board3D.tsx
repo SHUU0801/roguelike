@@ -84,6 +84,8 @@ type Anim = {
   dy: number;
   /** 殴り方。種族で変える */
   swing: Swing;
+  /** 殴り返されたか。振りに白飛びを重ねる */
+  hurt: boolean;
   start: number;
 };
 
@@ -226,7 +228,17 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     const el = host.current;
     if (!el) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      alpha: true,
+      /*
+       * 開発中だけ、描いた中身を後から読めるようにしておく。
+       * これが無いと canvas を読んでも空か前のコマが返り、
+       * **コマが変わったかどうかを画素で確かめられない。**
+       * 本番では切る（毎コマ保持するのは無駄なので）。
+       */
+      preserveDrawingBuffer: import.meta.env.DEV,
+    });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     /*
      * 影を落とす。**これがキャラを「立体に見せる」一番の要素。**
@@ -330,11 +342,16 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       Math.tan(CAM_TILT) * CAM_DIST,
       Math.cos(CAM_YAW) * CAM_DIST,
     );
-    let stop = false;
-
-    const tick = () => {
-      if (stop) return;
-      requestAnimationFrame(tick);
+    /**
+     * 1コマ描く。**時刻を引数でもらう。**
+     *
+     * ここを `performance.now()` から切り離してあるのが肝。
+     * 確認に使うブラウザのペインが隠れていると rAF が呼ばれず、
+     * 画面が止まって**動きを目で確かめる手段が無くなる。**
+     * 時刻を外から渡せれば、止まった状態でも
+     * 「踏み込みの 0.3 秒目」を名指しで描かせて見られる。
+     */
+    const frame = (now: number) => {
       const k = kit.current;
       if (!k) return;
 
@@ -344,7 +361,6 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       k.camera.position.copy(k.look).add(eye);
       k.camera.lookAt(k.look);
 
-      const now = performance.now() / 1000;
       for (const o of k.things.children) {
         const a = o.userData.anim as Anim | undefined;
         const base = o.userData.base as THREE.Vector3 | undefined;
@@ -389,7 +405,12 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         o.position.y += mv.dy;
         if (!flat) o.rotation.z = mv.spin;
         mat.opacity = solid * mv.fade;
-        glow(mv.glow);
+        /*
+         * 殴り返されたときは、振りに白飛びを重ねる。
+         * 以前は被弾を優先して振りを捨てていたので、
+         * 隣の敵と殴り合うと自分の振りが一度も見えなかった。
+         */
+        glow(a.hurt ? Math.max(mv.glow, Math.max(0, 0.9 - t * 3)) : mv.glow);
         if (!flat) o.scale.set(mv.sx, mv.sy, 1);
 
         /*
@@ -404,7 +425,22 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
 
       k.renderer.render(k.scene, k.camera);
     };
+
+    let stop = false;
+    const tick = () => {
+      if (stop) return;
+      requestAnimationFrame(tick);
+      frame(performance.now() / 1000);
+    };
     tick();
+
+    /*
+     * 開発中だけ、好きな時刻のコマを描かせる口を開けておく。
+     * これが無いと、ペインが隠れている間は動きを見る手段が無い。
+     */
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>).__b3dFrame = frame;
+    }
 
     return () => {
       stop = true;
@@ -616,6 +652,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           dx: 'dx' in fx ? fx.dx : 0,
           dy: 'dy' in fx ? fx.dy : 0,
           swing: a.kind === 'monster' ? swingOf(a.speciesId) : 'slam',
+          hurt: fx.kind === 'lunge' && fx.hurt === true,
           start: now,
         } satisfies Anim;
         m.userData.anim = anim;
@@ -628,7 +665,14 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     // 消えたものの残像。消えるあいだだけ出す
     for (const g of turnEffects.ghosts) {
       const m = put(tileTex(g.sprite), 1.2, g.pos.x, g.pos.y, 0.5);
-      m.userData.anim = { kind: 'die', dx: 0, dy: 0, swing: 'slam', start: now } satisfies Anim;
+      m.userData.anim = {
+        kind: 'die',
+        dx: 0,
+        dy: 0,
+        swing: 'slam',
+        hurt: false,
+        start: now,
+      } satisfies Anim;
       (m.material as THREE.MeshLambertMaterial).transparent = true;
     }
 
