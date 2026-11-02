@@ -21,6 +21,38 @@ export type TeamId = 'A' | 'B';
 /** 盤上の所属。モンスターはどちらの味方でもないので 'M' */
 export type Faction = TeamId | 'M';
 
+/** その Actor のチーム。モンスターは null（どちらでもない） */
+export function teamOf(actor: Actor): TeamId | null {
+  return actor.team === 'M' ? null : actor.team;
+}
+
+/**
+ * 遊び方。協力（coop）と対戦（versus）。
+ *
+ * **盤のルールはほとんど共有する。** 分けているのは
+ * 「乱数を入れるか」「視界とログを誰に見せるか」「フロアを鏡像にするか」の3点だけ。
+ * ここを `dungeon` の種類で表さないのは、対戦でも行き先（地形の見た目）を
+ * 選びたくなるため。軸が違うものを同じ欄に詰めると後で分けられなくなる。
+ */
+export type GameMode = 'coop' | 'versus';
+
+/**
+ * 対戦の1チームの人数。
+ *
+ * **ここ1つで 1vs1 専用にできる**ようにしてある（03_改善構成.md 段階D の判断(2)）。
+ * 2vs2 にするときは 2、きつくなったら 1 に戻す。
+ * チーム分けも部屋の定員も、この定数から計算する。人数を書き散らさない。
+ */
+export const TEAM_SIZE = 1;
+
+/** 対戦の部屋の定員。人間がどちらの側にも入れる大きさ */
+export const VERSUS_PLAYERS = TEAM_SIZE * 2;
+
+/** 何人目かでチームを決める。1〜TEAM_SIZE が A、その先が B */
+export function teamForSlot(slot: number): TeamId {
+  return slot <= TEAM_SIZE ? 'A' : 'B';
+}
+
 /** 部屋の矩形。視界の処理とモンスターの配置に使う */
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -105,6 +137,20 @@ export type Actor = {
    * モンスターは 0。
    */
   slot: number;
+
+  /**
+   * サーバーが動かす駒か。対戦の AI 相手（段階 D6）だけが true。
+   *
+   * `kind` を 'bot' に増やさないのが要点。bot も**プレイヤーとまったく同じ
+   * 規則で動く**（移動・体当たり・わざ・持ち物）。kind を増やすと
+   * 「プレイヤーだけの処理」を書いた場所すべてに分岐が増える。
+   * 違うのは「行動を人から受け取るか、サーバーが決めるか」の1点だけなので、
+   * そこだけを表す旗にしてある。
+   *
+   * この旗が立っている駒は**ターンの待ち相手に数えない**（GameRoom）。
+   * 数えると、誰も送ってこない行動を待って永久に止まる。
+   */
+  bot?: boolean;
 
   /**
    * 向いている方向。
@@ -205,6 +251,11 @@ export type Floor = {
 
 /** サーバーが持つ唯一の正しい状態 */
 export type GameState = {
+  /**
+   * 協力か対戦か。部屋を作るときに決まり、途中では変わらない。
+   * 乱数・視界・ログ・フロア生成の3点がこれで分かれる（GameMode に理由）。
+   */
+  mode: GameMode;
   /** lobby = 仲間を待っている状態。「はじめる」で playing になる */
   phase: 'lobby' | 'playing' | 'won' | 'lost';
   /**
@@ -223,6 +274,23 @@ export type GameState = {
   items: ItemInstance[];
   log: string[];
   /**
+   * ログ1行ごとの「見せる相手」。`log` と同じ長さ・同じ並び。
+   *
+   *   null  … 全員に見せる
+   *   'A'   … チーム A だけに見せる
+   *
+   * **pushLog の呼び出し側は何も変えない。** 誰に見せるかは resolve が
+   * 「いま誰の行動を処理しているか」から決めて setLogScope で渡す
+   * （03_改善構成.md 段階D D4）。60か所ある pushLog に引数を足すと、
+   * 1か所書き忘れただけで相手の行動が漏れる。書き忘れが起きない形にした。
+   *
+   * 協力モードではプレイヤーが全員チーム A なので、'A' と null は同じ意味になる。
+   * **だから協力モードの見え方は1行も変わらない。**
+   *
+   * 配るときに view.ts がこの欄を見て log を絞り、この欄自体は落とす。
+   */
+  logScope: (TeamId | null)[];
+  /**
    * 「降りる」に同意した人。全員が押すまで降りない。
    * 1人が踏むと全員が引きずられ、床のアイテムが無警告で消えていた事故の対策。
    */
@@ -233,6 +301,14 @@ export type GameState = {
   waitingFor: string[];
   /** ターンの締め切り（epoch ミリ秒）。待っていないときは null */
   deadlineAt: number | null;
+  /**
+   * 対戦の勝者。決着がつくまで undefined。
+   *
+   * `phase` は全員に同じ値が入る器なので、対戦の勝敗はこれ1つで表せない
+   * （片方の 'won' は他方の 'lost'）。**正しいのはこちら**で、
+   * phase は配るときに受け取る人の側から見た値へ書き換える（view.ts）。
+   */
+  winner?: TeamId;
 };
 
 /**

@@ -9,16 +9,18 @@ import {
   type GameState,
   type Intent,
   type Pos,
+  type TeamId,
 } from '../shared/types';
 import { FUEL_DANGER, FUEL_WARN, REVIVE_COST, hasEffect } from '../shared/types';
 import { isSkillId } from '../shared/skills';
 import { alertOnHit, monsterAct } from './ai';
 import { attack, damage, sneakAttack } from './combat';
+import { botIntent } from './duel';
 import { applyItem } from './effects';
-import { descend, pushLog } from './game';
+import { descend, pushLog, setLogScope } from './game';
 import { putIn, takeOut } from './backpack';
 import { tickEffects, useSkill } from './skills';
-import { updateVision } from './vision';
+import { playerTeams, updateVision, visionOf } from './vision';
 
 /**
  * 1ターンを解決する。
@@ -31,6 +33,22 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
 
   const depthAtStart = state.floor.depth;
 
+  /*
+   * a-0. AI の駒の行動を、人間の行動と**同時に**決める（段階 D6）。
+   *
+   * 1人ずつ処理する輪の中で決めると、AI は「先に動いた人間の結果」を
+   * 見てから手を選べてしまう。同期ターン制は全員が同時に決めるのが前提なので、
+   * ここでまとめて取っておく。
+   *
+   * 人間が送ってきた行動と同じ入れ物に入れるので、
+   * この先は誰が人間で誰が AI かを気にしなくてよくなる。
+   */
+  for (const actor of state.actors) {
+    if (actor.kind !== 'player' || !actor.bot || !actor.alive) continue;
+    if (intents.has(actor.id)) continue; // 人が引き継いでいるなら、その行動を使う
+    intents.set(actor.id, botIntent(state, actor));
+  }
+
   // a. プレイヤーの行動
   //
   // 順番をターンごとに回す。以前は state.actors の並び（＝入室順）で
@@ -41,8 +59,14 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
   for (let i = 0; i < players.length; i++) {
     const actor = players[(i + state.turn) % players.length];
     const intent = intents.get(actor.id) ?? { type: 'wait' };
+    /*
+     * この行動で出るログは、その人のチームにだけ見せる（段階D D4）。
+     * 協力モードはプレイヤー全員がチーム A なので、**見え方は変わらない。**
+     */
+    setLogScope(actor.team);
     applyPlayerIntent(state, actor.id, intent);
   }
+  setLogScope(null);
 
   // 階段を降りるとフロアが作り直される。その場合このターンのモンスターは動かさない
   const descended = state.floor.depth !== depthAtStart;
@@ -51,12 +75,23 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
   if (!descended) {
     for (const actor of [...state.actors]) {
       if (actor.kind !== 'monster' || !actor.alive) continue;
+      /*
+       * モンスターの行動は「そのモンスターが見えているチーム」にだけ出す。
+       *
+       * 片方だけに見えているなら、そのチームにだけ。
+       * 両方に見えている（or 誰にも見えていない）なら全員に出す——
+       * どちらの陣営のものでもないので、隠す意味が無い。
+       * 協力モードはチームが1つなので、ここも**変化ゼロ**。
+       */
+      setLogScope(watchingTeam(state, actor));
       monsterAct(state, actor);
     }
+    setLogScope(null);
   }
 
   // c. 松明が燃える。時間そのものを資源にするのがこの1行の目的
   burnFuel(state);
+  setLogScope(null);
 
   // c-2. 毒などの持続ダメージ
   tickEffects(state);
@@ -83,6 +118,10 @@ function burnFuel(state: GameState): void {
   for (const actor of state.actors) {
     if (actor.kind !== 'player' || !actor.alive) continue;
 
+    // 自分の松明の話は自分のチームにだけ。
+    // 相手の残りが分かると、残量を見て待つだけの試合になる
+    setLogScope(actor.team);
+
     if (actor.fuel > 0) {
       actor.fuel -= 1;
       if (actor.fuel === FUEL_WARN) pushLog(state, '松明が心細くなってきた');
@@ -98,6 +137,22 @@ function burnFuel(state: GameState): void {
 
 function manhattan(a: Pos, b: Pos): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+/**
+ * その Actor が見えているチーム。ちょうど1チームなら、そのチーム。
+ * 両方／どちらにも見えていないなら null（＝全員に見せる）。
+ *
+ * 協力モードはチームが 'A' しかないので、必ず 'A' か null になる。
+ * どちらもプレイヤー全員に届くので**見え方は変わらない**。
+ */
+function watchingTeam(state: GameState, actor: Actor): TeamId | null {
+  const teams = playerTeams(state);
+  const watching = teams.filter((t) => {
+    const v = visionOf(state.floor, t);
+    return v.visible[actor.pos.y * state.floor.width + actor.pos.x] === true;
+  });
+  return watching.length === 1 ? watching[0] : null;
 }
 
 function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): void {
@@ -170,7 +225,7 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
         // 「ぶつかったら必ず殴り返される」を無くすのがこの2行
         const unaware = blocker.kind === 'monster' && !blocker.aware;
         if (unaware) sneakAttack(state, actor, blocker);
-        else attack(state, actor, blocker, { pvp: false });
+        else attack(state, actor, blocker);
         alertOnHit(state, blocker, actor.pos);
         return;
       }
@@ -196,7 +251,7 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
       for (const enemy of leaving) {
         if (!actor.alive) return;
         pushLog(state, '背を向けた隙を突かれた');
-        attack(state, enemy, actor, { pvp: false });
+        attack(state, enemy, actor);
       }
       if (!actor.alive) return;
 
@@ -373,7 +428,10 @@ function cleanUpDead(state: GameState): void {
       takeOut(item);
       item.pos = freeItemSpot(state, actor.pos);
     }
+    // 散らばったのが見えるのは、その場にいた側だけ
+    setLogScope(actor.team);
     pushLog(state, '持っていたものが床に散らばった');
+    setLogScope(null);
   }
 
   const dead = state.actors.filter((a) => !a.alive && a.kind === 'monster');
@@ -413,6 +471,43 @@ export function retireCleanup(state: GameState): void {
 function checkGameOver(state: GameState): void {
   const players: Actor[] = state.actors.filter((a) => a.kind === 'player');
   if (players.length === 0) return;
+
+  /*
+   * 対戦の決着（段階 D6）。
+   *
+   * **立っているチームが1つになったら終わり。** 人数で数えない。
+   * 人数で数えると TEAM_SIZE を 2 にした瞬間に書き直すことになる。
+   *
+   * phase ではなく winner を正とする（types.ts に理由）。
+   * phase にはとりあえず 'won' を入れておき、配るときに
+   * 負けた側へは 'lost' に書き換える（view.ts）。
+   *
+   * 時間切れの判定（生存数→残HP→与ダメージ→引き分け）は段階 D9。
+   * ここでは**相打ちだけ**引き分けとして扱う。
+   */
+  if (state.mode === 'versus') {
+    const sides = (['A', 'B'] as const).filter((t) => players.some((p) => p.team === t));
+    // 片側しかいない盤では勝敗がつかない（相手が抜けた直後など）
+    if (sides.length < 2) return;
+
+    const standing = sides.filter((t) => players.some((p) => p.team === t && p.alive));
+    if (standing.length === 1) {
+      state.phase = 'won';
+      state.winner = standing[0];
+      setLogScope(null);
+      pushLog(state, `チーム${standing[0]} の勝ち`);
+      return;
+    }
+    if (standing.length === 0) {
+      // 相打ち。勝者を立てない
+      state.phase = 'lost';
+      state.lostBy = 'dead';
+      setLogScope(null);
+      pushLog(state, '相打ち');
+    }
+    return;
+  }
+
   if (players.every((p) => !p.alive)) {
     state.phase = 'lost';
     // 1人でも倒れていたなら「全滅」。全員が自分で帰ったなら「引き返した」

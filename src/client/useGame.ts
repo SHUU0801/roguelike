@@ -55,6 +55,27 @@ export function wantedDungeon(): DungeonId {
   return isDungeonId(v) ? v : 'ruin';
 }
 
+/**
+ * 対戦の部屋かどうかも URL に入れる（`?vs=1`）。
+ *
+ * 行き先（`?d=`）と同じ扱いにしてある理由も同じで、
+ * **部屋を作るときにしか決められない**ので、変えるならページ遷移が一番簡単。
+ * さそう URL にもそのまま乗るので、相手に送ればそのまま対戦の部屋に入る。
+ */
+const VERSUS_KEY = 'vs';
+
+export function wantedVersus(): boolean {
+  return new URLSearchParams(window.location.search).get(VERSUS_KEY) === '1';
+}
+
+/** 対戦の部屋を作り直す。協力に戻すときは goToDungeon を呼ぶ */
+export function goToVersus(): void {
+  // 行き先を変えるときと同じ。前の部屋の合い言葉が残っていると、
+  // 新しい部屋を作るより先に再接続が走って元の部屋へ戻ってしまう
+  clearToken();
+  window.location.search = `?${VERSUS_KEY}=1`;
+}
+
 export function goToDungeon(id: DungeonId): void {
   /*
    * 再接続の合い言葉を先に捨てる。
@@ -160,7 +181,14 @@ export function useGame(): Connection {
     // ?room= があれば合流、無ければ新しい部屋を作る。
     // joinOrCreate を使わないのは、知らない人の部屋に勝手に入れないようにするため。
     const joinFresh = () =>
-      wanted ? client.joinById(wanted) : client.create('game', { dungeon: wantedDungeon() });
+      wanted
+        ? client.joinById(wanted)
+        : client.create('game', {
+            dungeon: wantedDungeon(),
+            // 'coop' をわざわざ送る。送らないとサーバー側の既定に頼ることになり、
+            // どちらが既定かを2か所で覚えておく必要が出る
+            mode: wantedVersus() ? 'versus' : 'coop',
+          });
 
     // 戻ろうとしている部屋の合い言葉を持っているときだけ再接続を試す
     const saved = loadToken();

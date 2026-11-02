@@ -3,7 +3,9 @@ import {
   addPlayer,
   chooseJob,
   createInitialGame,
+  fillWithBots,
   inventoryOf,
+  setLogScope,
   startGame,
 } from './src/server/game';
 import { createFloor, spawnPos } from './src/server/dungeon';
@@ -26,7 +28,13 @@ import { dungeonOf } from './src/shared/dungeons';
 import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
 import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn, retireCleanup } from './src/server/resolve';
-import { updateVision } from './src/server/vision';
+import { playerTeams, updateVision, visionOf } from './src/server/vision';
+import { readFileSync } from 'node:fs';
+import { attack } from './src/server/combat';
+import { monsterAct } from './src/server/ai';
+import { botIntent } from './src/server/duel';
+import { viewFor } from './src/server/view';
+import { arenaSpawn, createMirrorFloor } from './src/server/dungeon';
 import { JOBS, type JobId } from './src/shared/jobs';
 import { BASE_SKILL } from './src/shared/skills';
 import { OFFER_COUNT, PERKS, PERK_IDS, perkCount, perkOf } from './src/shared/perks';
@@ -34,6 +42,7 @@ import {
   BAG_H,
   DIR_DELTA,
   MAX_LEVEL,
+  VERSUS_PLAYERS,
   effectiveAtk,
   effectiveDef,
   expToNext,
@@ -1561,6 +1570,455 @@ function putMonster(
   assert(said.includes('3個'), '倉庫の数が出る');
   assert(describeDump({}) === '記録あり', '中身が無くても何か言う');
   assert(describeDump({ 'roguelike:profile': '壊れている' }).length > 0, '壊れた記録でも落ちない');
+}
+
+// ============================================================
+//  対戦（2vs2 PvP）の土台 — 03_改善構成.md 段階D D2〜D6
+//
+//  D2 と D3 は「見た目の変化がゼロ」が正しさの定義なので、
+//  **変化ゼロを試験にしないと、壊れたことに気づけない。**
+//  以下の試験の半分は「協力モードが1マスも変わっていない」の確認。
+// ============================================================
+
+/** 対戦の盤を1つ作る。人間は p1（戦士）、空いた席は AI */
+function freshVersus(): { state: GameState; me: Actor; bot: Actor } {
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'p1');
+  chooseJob(state, 'p1', 'warrior');
+  fillWithBots(state);
+  startGame(state);
+  updateVision(state);
+  const me = state.actors.find((a) => a.id === 'p1');
+  const bot = state.actors.find((a) => a.bot === true);
+  if (!me || !bot) throw new Error('versus setup failed');
+  return { state, me, bot };
+}
+
+/**
+ * コメントを落としたソース。
+ * 「ここに Math.random は無い」と書いたコメント自体に
+ * 引っかかって落ちたので、コメントは外して見る。
+ */
+function codeOf(file: string): string {
+  return readFileSync(`./src/server/${file}`, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
+/** 見えているか。チームごとの視界を直に引く */
+function sees(state: GameState, team: 'A' | 'B', p: Pos): boolean {
+  return visionOf(state.floor, team).visible[p.y * state.floor.width + p.x] === true;
+}
+
+// --- 68. D2 送信を1人ずつに。協力モードは変化ゼロ ---
+{
+  /*
+   * publish を broadcast から client.send のループに替えた（GameRoom）。
+   * 替えただけでは中身が変わってはいけない。
+   * **同じオブジェクトが返ること**を試験にしておけば、
+   * この先どれだけ対戦側を足しても協力モードは巻き込まれない。
+   */
+  const { state } = fresh();
+  assert(viewFor(state, 'A') === state, '協力では state をそのまま配る（削らない）');
+  assert(viewFor(state, null) === state, 'チームの分からない人にもそのまま配る');
+  assert(state.mode === 'coop', '既定は協力モード');
+}
+
+// --- 69. D3 視界をチームごとに。協力モードは変化ゼロ ---
+{
+  const state = createInitialGame();
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  startGame(state);
+  updateVision(state);
+
+  const p1 = state.actors.find((a) => a.id === 'p1');
+  const p2 = state.actors.find((a) => a.id === 'p2');
+  if (!p1 || !p2) throw new Error('players missing');
+
+  assert(playerTeams(state).join(',') === 'A', '協力モードのチームは A だけ');
+
+  // 2人を離して、互いの足元が両方見えていること（＝視界が1つに合わさっている）
+  for (let y = state.floor.height - 2; y >= 1; y--) {
+    let placed = false;
+    for (let x = state.floor.width - 2; x >= 1; x--) {
+      if (tileAt(state.floor, x, y) === 'floor') {
+        p2.pos = { x, y };
+        placed = true;
+        break;
+      }
+    }
+    if (placed) break;
+  }
+  updateVision(state);
+
+  assert(sees(state, 'A', p1.pos) && sees(state, 'A', p2.pos), '協力は視界を共有する');
+  const v = visionOf(state.floor, 'A');
+  assert(
+    state.floor.visible === v.visible && state.floor.seen === v.seen,
+    'チームが1つなら、その視界がそのまま盤に載る',
+  );
+
+  // 誰もいない盤では、以前と同じく visible は空で seen は残る
+  const empty = createInitialGame();
+  empty.floor.seen[0] = true;
+  updateVision(empty);
+  assert(!empty.floor.visible.some(Boolean), 'プレイヤーがいなければ何も見えない');
+  assert(empty.floor.seen[0] === true, 'プレイヤーがいなくても記憶は消さない');
+}
+
+// --- 70. D3 対戦では視界が分かれる ---
+{
+  const { state, me, bot } = freshVersus();
+
+  assert(playerTeams(state).join(',') === 'A,B', '対戦は2チーム');
+  assert(me.team === 'A' && bot.team === 'B', 'slot の順でチームが決まる');
+
+  assert(sees(state, 'A', me.pos), '自分の足元は自分に見えている');
+  assert(sees(state, 'B', bot.pos), '相手の足元は相手に見えている');
+  // 鏡像の両端から始まるので、開幕は互いに見えていない
+  assert(!sees(state, 'A', bot.pos), '開幕、相手の位置はこちらに見えていない');
+  assert(!sees(state, 'B', me.pos), '開幕、こちらの位置は相手に見えていない');
+
+  assert(
+    !state.floor.visible.some(Boolean),
+    '対戦では盤そのものに視界を載せない（差し替え損ねても漏れない側に倒す）',
+  );
+  assert(!state.floor.seen.some(Boolean), '記憶も盤には載せない');
+}
+
+// --- 71. D4 ログのスコープ ---
+{
+  const { state } = fresh();
+  assert(state.log.length === state.logScope.length, 'ログと見せる相手は同じ長さ');
+
+  // 20行の上限を越えても、2つの配列がずれない
+  for (let i = 0; i < 40; i++) turn(state, { type: 'wait' });
+  assert(state.log.length === state.logScope.length, '古い行を捨てても長さが揃っている');
+  assert(
+    state.logScope.every((t) => t === null || t === 'A'),
+    '協力モードの行は全員向け（A と null しか出ない）',
+  );
+
+  // 対戦。片方の行動で出た行が、相手に渡らない
+  const v = freshVersus();
+  // 「息を整えた」は傷があるときだけ出る。1 削ってから待つ
+  v.me.hp = v.me.maxHp - 1;
+  v.state.log.length = 0;
+  v.state.logScope.length = 0;
+  resolveTurn(v.state, new Map<string, Intent>([['p1', { type: 'wait' }]]));
+
+  const forA = viewFor(v.state, 'A').log;
+  const forB = viewFor(v.state, 'B').log;
+  assert(forA.includes('息を整えた'), '自分の行動のログは自分に届く');
+  assert(!forB.includes('息を整えた'), '相手の行動のログは相手に届かない');
+  assert(viewFor(v.state, 'A').logScope.length === 0, 'どの行が誰向けだったかは配らない');
+}
+
+// --- 72. D5 鏡像フロア ---
+{
+  const floor = createMirrorFloor();
+
+  assert(floor.width % 2 === 0, '幅は偶数（半分を折り返すので）');
+
+  let symmetric = true;
+  for (let y = 0; y < floor.height; y++) {
+    for (let x = 0; x < floor.width; x++) {
+      if (tileAt(floor, x, y) !== tileAt(floor, floor.width - 1 - x, y)) symmetric = false;
+    }
+  }
+  assert(symmetric, '地形が左右で完全に同じ（地形の有利不利が抽選で決まらない）');
+  assert(floor.rooms.length % 2 === 0, '部屋も左右で同じ数');
+  assert(!floor.tiles.includes('stairs'), '対戦に階段は無い（相手を倒して決まる）');
+
+  const a = arenaSpawn(floor, 'A');
+  const b = arenaSpawn(floor, 'B');
+  assert(a.x + b.x === floor.width - 1 && a.y === b.y, '出発点は互いの鏡');
+  assert(a.x !== b.x, '出発点が重なっていない');
+
+  // 片側からもう片側へ歩いて行けるか（中央の通路がつながっているか）
+  const seen = new Set<number>([a.y * floor.width + a.x]);
+  let front: Pos[] = [a];
+  let reached = false;
+  while (front.length > 0 && !reached) {
+    const next: Pos[] = [];
+    for (const at of front) {
+      for (const dir of ['n', 'e', 's', 'w'] as Dir[]) {
+        const d = DIR_DELTA[dir];
+        const p = { x: at.x + d.x, y: at.y + d.y };
+        if (tileAt(floor, p.x, p.y) === 'wall') continue;
+        const i = p.y * floor.width + p.x;
+        if (seen.has(i)) continue;
+        seen.add(i);
+        if (p.x === b.x && p.y === b.y) reached = true;
+        next.push(p);
+      }
+    }
+    front = next;
+  }
+  assert(reached, '自陣から相手の陣地へ歩いて行ける（中央がつながっている）');
+}
+
+// --- 73. D6 AI 相手の 1vs1 ---
+{
+  const { state, me, bot } = freshVersus();
+
+  assert(
+    state.actors.filter((a) => a.kind === 'player').length === VERSUS_PLAYERS,
+    `対戦の席が埋まる（${VERSUS_PLAYERS}人）`,
+  );
+  assert(bot.bot === true, 'AI の駒には旗が立っている');
+  assert(bot.kind === 'player', 'AI の駒もプレイヤーと同じ型（規則を書き写さない）');
+  assert(bot.job === me.job, 'AI は相手と同じ職業（職業差が抽選で決まらない）');
+  assert(bot.maxHp === me.maxHp && bot.atk === me.atk, '素の強さも同じ');
+
+  // 同じ盤で2回呼んだら同じ手。乱数が入っていたら揺れる
+  const first = JSON.stringify(botIntent(state, bot));
+  let same = true;
+  for (let i = 0; i < 30; i++) {
+    if (JSON.stringify(botIntent(state, bot)) !== first) same = false;
+  }
+  assert(same, 'AI の手は決定論（同じ盤なら必ず同じ手）');
+
+  // 隣に立たせたら殴る
+  const spot = { x: bot.pos.x, y: bot.pos.y };
+  for (const dir of ['n', 'e', 's', 'w'] as Dir[]) {
+    const d = DIR_DELTA[dir];
+    if (tileAt(state.floor, spot.x + d.x, spot.y + d.y) !== 'wall') {
+      me.pos = { x: spot.x + d.x, y: spot.y + d.y };
+      break;
+    }
+  }
+  updateVision(state);
+  const close = botIntent(state, bot);
+  assert(
+    close.type === 'move' || close.type === 'skill',
+    `隣に相手がいたら殴るかわざを使う（${close.type}）`,
+  );
+}
+
+// --- 74. D6 対戦に乱数が入っていない ---
+{
+  /*
+   * 「運で負けた」が出たときに疑う順（03_改善構成.md 段階D）:
+   *   (1) モンスターの乱数（patrol 以外に増えていないか）
+   *   (3) attack に { pvp: false } が復活していないか
+   * (1) と (3) をここで固める。(2)（ドラフト）は段階 D8。
+   */
+  const { state, me, bot } = freshVersus();
+
+  // (3) 同じ条件で何回殴っても同じダメージ
+  const dealt = new Set<number>();
+  for (let i = 0; i < 40; i++) {
+    bot.hp = bot.maxHp;
+    attack(state, me, bot);
+    dealt.add(bot.maxHp - bot.hp);
+  }
+  assert(dealt.size === 1, `対戦の殴りは確定値 (${[...dealt].join(' / ')})`);
+
+  // 協力モードのほうは振れていること（確定にしてしまっていない）
+  const coop = fresh();
+  const foe = coop.state.actors.find((a) => a.kind === 'monster');
+  if (foe) {
+    const spread = new Set<number>();
+    for (let i = 0; i < 80; i++) {
+      foe.hp = foe.maxHp;
+      attack(coop.state, coop.me, foe);
+      spread.add(foe.maxHp - foe.hp);
+    }
+    assert(spread.size > 1, '協力モードの殴りは今も振れている');
+  }
+
+  // (1) 対戦ではモンスターがうろうろしない
+  const vs = freshVersus();
+  const mob = vs.state.actors.find((a) => a.kind === 'monster');
+  assert(mob !== undefined, '対戦の盤にモンスターが置かれている');
+  if (mob) {
+    mob.aware = false;
+    const was = { ...mob.pos };
+    const facing = mob.facing;
+    let moved = false;
+    for (let i = 0; i < 40; i++) {
+      monsterAct(vs.state, mob);
+      vs.state.turn++;
+      if (mob.pos.x !== was.x || mob.pos.y !== was.y || mob.facing !== facing) moved = true;
+    }
+    assert(!moved, '対戦では、見つけるまでモンスターが動かない');
+  }
+
+  // 協力モードのモンスターは今もうろうろする
+  const c2 = fresh();
+  const m2 = c2.state.actors.find((a) => a.kind === 'monster');
+  if (m2) {
+    m2.aware = false;
+    const was = { ...m2.pos };
+    const facing = m2.facing;
+    let moved = false;
+    for (let i = 0; i < 80; i++) {
+      monsterAct(c2.state, m2);
+      c2.state.turn++;
+      if (m2.pos.x !== was.x || m2.pos.y !== was.y || m2.facing !== facing) moved = true;
+    }
+    assert(moved, '協力モードのモンスターは今もうろうろする');
+  }
+
+  // (3) ソースに書き下した { pvp: false } が残っていないか。
+  //     既定値（pvpOf）に任せるのが正しい呼び方なので、1つでもあれば疑う
+  const files = ['ai.ts', 'resolve.ts', 'skills.ts', 'effects.ts', 'duel.ts', 'levels.ts'];
+  const written = files.filter((f) => /attack\([^;]*pvp:\s*false/.test(codeOf(f)));
+  assert(
+    written.length === 0,
+    `attack に pvp:false が書き下されていない (${written.join(' / ')})`,
+  );
+
+  // AI の頭に乱数が無いか。ソースを読んで確かめる
+  const duelSrc = codeOf('duel.ts');
+  assert(!/Math\.random/.test(duelSrc), 'AI の頭に Math.random が無い');
+  assert(
+    !/from '\.\/random'/.test(duelSrc),
+    'AI の頭が乱数の道具を読み込んでいない（randInt / pick / shuffle）',
+  );
+}
+
+// --- 75. D6 通しで決着する ---
+{
+  /*
+   * **合格条件そのもの。** 1vs1 が最後まで通ること。
+   * 人間の側も AI と同じ頭で動かして、10回まわして全部決着するか見る。
+   * 決着しない盤が混ざると、ブラウザで遊んだとき終わらない試合を引く。
+   */
+  let decided = 0;
+  let longest = 0;
+  for (let run = 0; run < 10; run++) {
+    const { state, me } = freshVersus();
+    let t = 0;
+    while (state.phase === 'playing' && t < 300) {
+      resolveTurn(state, new Map<string, Intent>([['p1', botIntent(state, me)]]));
+      t++;
+    }
+    if (state.phase !== 'playing') decided++;
+    longest = Math.max(longest, t);
+  }
+  assert(decided === 10, `10回とも決着する（${decided}/10、最長 ${longest} ターン）`);
+
+  // 勝者と敗者で phase が分かれる
+  const { state, bot } = freshVersus();
+  bot.hp = 0;
+  bot.alive = false;
+  retireCleanup(state);
+  assert(state.winner === 'A', '相手が倒れたらチーム A の勝ち');
+  assert(viewFor(state, 'A').phase === 'won', '勝った側には won が届く');
+  assert(viewFor(state, 'B').phase === 'lost', '負けた側には lost が届く');
+  assert(state.phase === 'won', '盤そのものは winner を正とする');
+}
+
+// --- 76. D6 送っているものに相手の位置が入っていない ---
+{
+  /*
+   * **ここが一番大事な試験。**
+   * 視界を分けても、配る中身を削り忘れていれば画面に出ないだけで
+   * 相手の位置はブラウザに届いている（コンソールで見える）。
+   * だから「state を文字列にして、相手の座標が入っていないこと」を見る。
+   */
+  const { state, me, bot } = freshVersus();
+
+  const forA = viewFor(state, 'A');
+  const forB = viewFor(state, 'B');
+
+  assert(!forA.actors.some((a) => a.id === bot.id), 'A の受け取る中身に相手の駒が無い');
+  assert(!forB.actors.some((a) => a.id === me.id), 'B の受け取る中身にこちらの駒が無い');
+  assert(forA.actors.some((a) => a.id === me.id), '自分の駒は届く');
+  assert(
+    forA.actors.every((a) => a.team === 'A' || sees(state, 'A', a.pos)),
+    '届く駒は自陣か、見えているマスにいるものだけ',
+  );
+
+  // 床のアイテムも、見えているマスのものだけ
+  assert(
+    forA.items.every((i) => i.pos === null || sees(state, 'A', i.pos)),
+    '床のアイテムは見えているマスのものだけ届く',
+  );
+  // 相手の袋の中身は届かない（装備から強さが読めてしまう）
+  assert(
+    forA.items.every((i) => {
+      if (i.ownerId === null) return true;
+      const owner = state.actors.find((a) => a.id === i.ownerId);
+      return owner?.team === 'A';
+    }),
+    '相手の持ち物は届かない',
+  );
+
+  // 地形は隠さない（鏡像なので秘密情報ではない）。
+  // ここを隠す作りにすると、タイル配列の部分マスクという温床ができる
+  assert(
+    forA.floor.tiles.length === state.floor.tiles.length,
+    '地形は丸ごと届く（鏡像なので隠す意味が無い）',
+  );
+
+  // 実際に送る形（JSON）に相手の座標が含まれていないか
+  const payload = JSON.stringify(forA);
+  assert(!payload.includes(`"${bot.id}"`), '送る JSON に相手の id が入っていない');
+  assert(
+    !new RegExp(`"x":${bot.pos.x},"y":${bot.pos.y}`).test(payload),
+    '送る JSON に相手の座標が入っていない',
+  );
+}
+
+// --- 77. 協力モードが変わっていないこと（まとめ） ---
+{
+  /*
+   * 段階 D2〜D5 は「協力モードの変化ゼロ」が正しさの定義。
+   * 個別の試験は上に書いたが、**通しで1ランまわして**
+   * 以前と同じように遊べることをここで押さえる。
+   */
+  const { state, me } = fresh();
+  assert(state.mode === 'coop', '協力モードで始まる');
+
+  const dirs: Dir[] = ['n', 'e', 's', 'w'];
+  for (let i = 0; i < 30; i++) turn(state, { type: 'move', dir: dirs[i % 4] });
+
+  assert(state.phase === 'playing' || state.phase === 'lost', '30ターン歩いても落ちない');
+  assert(viewFor(state, 'A') === state, '協力は配る中身を削らない');
+  assert(state.winner === undefined, '協力に勝者はいない');
+  assert(me.team === 'A', '協力のプレイヤーはチーム A');
+  assert(state.actors.filter((a) => a.bot).length === 0, '協力モードに AI の駒は入らない');
+}
+
+// --- 78. 殴り合いのログは殴った側と殴られた側の両方に届く ---
+{
+  /*
+   * 実際に対戦を通しで遊んで見つけた穴。
+   * ログを「行動した人のチーム」だけに絞ると、**殴られたほうには1行も出ず、
+   * HP だけ減って理由が分からない。** 試験にしておかないと、
+   * D7 以降でスコープを触ったときに同じ穴が戻る。
+   */
+  const { state, me, bot } = freshVersus();
+  state.log.length = 0;
+  state.logScope.length = 0;
+
+  setLogScope('B'); // 相手の行動として殴らせる
+  attack(state, bot, me);
+  setLogScope(null);
+
+  const toA = viewFor(state, 'A').log.join('\n');
+  const toB = viewFor(state, 'B').log.join('\n');
+  assert(toA.includes('ダメージ'), '殴られた側にもログが届く');
+  assert(toB.includes('ダメージ'), '殴った側にもログが届く');
+  assert(toA.includes(`${bot.slot}番 → ${me.slot}番`), '対戦ではプレイヤーを番号で呼ぶ');
+
+  // 協力モードの文面は1文字も変わっていない
+  const coop = fresh();
+  const mob = coop.state.actors.find((a) => a.kind === 'monster');
+  assert(mob !== undefined, '協力の盤にモンスターがいる');
+  if (mob) {
+    coop.state.log.length = 0;
+    coop.state.logScope.length = 0;
+    attack(coop.state, coop.me, mob);
+    assert(
+      coop.state.log.some((l) => /^冒険者 → .+ \d+ダメージ$/.test(l)),
+      '協力モードのログの文面は変わっていない（種族の名前のまま）',
+    );
+  }
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

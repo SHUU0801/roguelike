@@ -2,9 +2,13 @@ import { Room, type Client } from 'colyseus';
 import {
   MAX_PLAYERS,
   TURN_LIMIT_MS,
+  VERSUS_PLAYERS,
+  teamOf,
   type Actor,
+  type GameMode,
   type GameState,
   type Intent,
+  type TeamId,
 } from '../shared/types';
 import { isDungeonId, type DungeonId } from '../shared/dungeons';
 import { isJobId } from '../shared/jobs';
@@ -13,6 +17,7 @@ import {
   addPlayer,
   chooseJob,
   createInitialGame,
+  fillWithBots,
   pushLog,
   removePlayer,
   setLoadout,
@@ -20,6 +25,7 @@ import {
   setSkillPick,
   startGame,
 } from './game';
+import { viewFor } from './view';
 import { rearrange } from './backpack';
 import { retireCleanup } from './resolve';
 import { takePerk } from './levels';
@@ -51,10 +57,20 @@ export class GameRoom extends Room {
    * 部屋を作るときに、どのダンジョンへ潜るかが決まる。
    * 途中から入ってきた人は選べない（行き先が変わると、もう入っている人が困る）。
    */
-  onCreate(options?: { dungeon?: unknown }): void {
-    if (isDungeonId(options?.dungeon)) {
-      this.game = createInitialGame(options.dungeon as DungeonId);
+  onCreate(options?: { dungeon?: unknown; mode?: unknown }): void {
+    /*
+     * 協力か対戦か。**部屋を作るときにしか決まらない。**
+     * 途中で切り替えられるようにすると、盤（鏡像かどうか）を
+     * 作り直すことになり、すでに入っている人の位置が消える。
+     */
+    const mode: GameMode = options?.mode === 'versus' ? 'versus' : 'coop';
+    const dungeon = isDungeonId(options?.dungeon) ? (options.dungeon as DungeonId) : 'ruin';
+    if (mode === 'versus' || isDungeonId(options?.dungeon)) {
+      this.game = createInitialGame(dungeon, mode);
     }
+    // 対戦の定員は TEAM_SIZE から決まる（1vs1 なら2人）。
+    // 人数を2か所に書かないために、ここも定数から引く
+    if (mode === 'versus') this.maxClients = VERSUS_PLAYERS;
 
     this.onMessage<Intent>('intent', (client, intent) => {
       if (this.game.phase !== 'playing') return;
@@ -120,6 +136,11 @@ export class GameRoom extends Room {
 
     this.onMessage('start', () => {
       if (this.game.phase !== 'lobby') return;
+      /*
+       * 対戦は、空いている席を AI で埋めてから始める（段階 D6）。
+       * **人間が1人でも始められる**ことが、対戦を作りながら確かめる唯一の手段。
+       */
+      fillWithBots(this.game);
       startGame(this.game);
       updateVision(this.game);
       this.publish();
@@ -204,10 +225,16 @@ export class GameRoom extends Room {
 
   // --- ターンの進行 ---
 
-  /** 行動を待っている相手。死んだ人と回線が切れた人は待たない */
+  /**
+   * 行動を待っている相手。死んだ人と回線が切れた人は待たない。
+   *
+   * **AI の駒も待たない。** 誰も行動を送ってこないので、
+   * 待ち相手に数えるとターンが永久に止まる。
+   * AI の行動は resolveTurn が解決の直前にまとめて決める（duel.ts）。
+   */
   private activePlayers(): Actor[] {
     return this.game.actors.filter(
-      (a) => a.kind === 'player' && a.alive && !this.away.has(a.id),
+      (a) => a.kind === 'player' && a.alive && !a.bot && !this.away.has(a.id),
     );
   }
 
@@ -264,7 +291,26 @@ export class GameRoom extends Room {
     this.publish();
   }
 
-  /** 待ち状況を詰め直してから配る */
+  /** その人のチーム。盤にいなければ null（見物人） */
+  private teamFor(sessionId: string): TeamId | null {
+    const actor = this.game.actors.find((a) => a.id === sessionId);
+    return actor ? teamOf(actor) : null;
+  }
+
+  /**
+   * 待ち状況を詰め直してから配る。
+   *
+   * ## 1人ずつ送っている理由（03_改善構成.md 段階D D2）
+   *
+   * 以前はここが `this.broadcast('state', this.game)` の1行だった。
+   * 全員に同じものを配る限り、**対戦で相手の位置を隠す場所がどこにも無い。**
+   * 配る直前にその人向けに削るのが唯一の正しい場所なので、
+   * まずここをループに変えた。
+   *
+   * 協力モードでは viewFor が state をそのまま返すので、
+   * **broadcast と1バイトも変わらない。** 段階 D2 を単独で入れたときに
+   * 見た目の変化がゼロだったのはこのため。
+   */
   private publish(): void {
     this.game.waitingFor = this.activePlayers()
       .filter((p) => !this.intents.has(p.id))
@@ -272,7 +318,9 @@ export class GameRoom extends Room {
 
     if (this.game.waitingFor.length === 0) this.game.deadlineAt = null;
 
-    this.broadcast('state', this.game);
+    for (const client of this.clients) {
+      client.send('state', viewFor(this.game, this.teamFor(client.sessionId)));
+    }
   }
 
   onDispose(): void {

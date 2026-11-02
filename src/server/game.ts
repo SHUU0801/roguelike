@@ -7,14 +7,26 @@ import {
   BAG_H,
   BAG_W,
   FUEL_START,
+  TEAM_SIZE,
   actorAt,
+  teamForSlot,
   tileAt,
+  type GameMode,
   type GameState,
   type ItemInstance,
   type Pos,
+  type TeamId,
 } from '../shared/types';
 import { putIn } from './backpack';
-import { createFloor, createTutorialFloor, scatterPositions, spawnPos } from './dungeon';
+import {
+  arenaSpawn,
+  arenaSpots,
+  createFloor,
+  createMirrorFloor,
+  createTutorialFloor,
+  scatterPositions,
+  spawnPos,
+} from './dungeon';
 import { pick, randInt } from './random';
 
 /*
@@ -41,21 +53,32 @@ function newId(prefix: string): string {
   return `${prefix}${nextId++}`;
 }
 
-export function createInitialGame(dungeon: DungeonId = 'ruin'): GameState {
+export function createInitialGame(
+  dungeon: DungeonId = 'ruin',
+  mode: GameMode = 'coop',
+): GameState {
   const state: GameState = {
+    mode,
     phase: 'lobby',
     dungeon,
     turn: 0,
-    floor: dungeon === 'tutorial' ? createTutorialFloor() : createFloor(1),
+    floor:
+      mode === 'versus'
+        ? createMirrorFloor()
+        : dungeon === 'tutorial'
+          ? createTutorialFloor()
+          : createFloor(1),
     actors: [],
     items: [],
-    log: ['仲間が来るのを待っている'],
+    log: [mode === 'versus' ? '相手を待っている' : '仲間が来るのを待っている'],
+    logScope: [null],
     descendReady: [],
     floorStartedAt: 0,
     waitingFor: [],
     deadlineAt: null,
   };
-  if (dungeon === 'tutorial') seedTutorial(state);
+  if (mode === 'versus') populateArena(state);
+  else if (dungeon === 'tutorial') seedTutorial(state);
   else populateFloor(state);
   return state;
 }
@@ -190,14 +213,21 @@ export function addPlayer(state: GameState, id: string): void {
   const job: JobId = JOB_IDS.find((j) => !taken.has(j)) ?? 'warrior';
   const def = jobOf(job);
 
+  /*
+   * チーム分け。
+   *
+   * 協力モードはプレイヤー全員がチーム A（isHostile が team で判定するので、
+   * 同じチームなら殴り合わない）。対戦では slot の前半が A、後半が B。
+   * **人数は TEAM_SIZE 1つで決まる**ので、1vs1 と 2vs2 でここは変わらない。
+   */
+  const team: TeamId = state.mode === 'versus' ? teamForSlot(slot) : 'A';
+
   state.actors.push({
     id,
     kind: 'player',
-    // 協力モードではプレイヤーは全員同じチーム。
-    // v1.5 ではここが 'A' / 'B' に分かれる
-    team: 'A',
+    team,
     speciesId: 'hero',
-    pos: freeSpawn(state),
+    pos: state.mode === 'versus' ? versusSpawn(state, team, slot) : freeSpawn(state),
     hp: def.maxHp,
     maxHp: def.maxHp,
     atk: def.atk,
@@ -304,6 +334,102 @@ function freeSpawn(state: GameState): Pos {
     }
   }
   return base;
+}
+
+/**
+ * 対戦の出現位置。自陣の奥から、チーム内の順番でずらす。
+ *
+ * **乱数を使わない。** 出発点が抽選で決まると、
+ * それ自体が「運で負けた」の種になる（00_ゴール定義.md）。
+ */
+function versusSpawn(state: GameState, team: TeamId, slot: number): Pos {
+  const index = (slot - 1) % TEAM_SIZE;
+  const base = arenaSpawn(state.floor, team, index);
+  if (!actorAt(state, base.x, base.y)) return base;
+  // 埋まっていたら次の候補へ。index をずらすだけなので、やはり乱数は要らない
+  for (let i = 1; i <= TEAM_SIZE + 2; i++) {
+    const p = arenaSpawn(state.floor, team, index + i);
+    if (!actorAt(state, p.x, p.y)) return p;
+  }
+  return base;
+}
+
+/**
+ * 対戦のフロアに中身を置く。**左半分に置いて、鏡の位置に同じものを置く。**
+ *
+ * 同じ敵・同じアイテムが同じ距離に必ず2つあるので、
+ * 「相手だけ剣を拾った」が起きない。これが鏡像にした理由そのもの
+ * （03_改善構成.md 段階D）。
+ *
+ * 数が少ないのは、D6 の目的が「対戦が通しで遊べること」の確認だから。
+ * 中身を増やすのは段階 D8（ドラフト）で判断する。
+ */
+const ARENA_MONSTERS = 2;
+const ARENA_ITEMS = 2;
+
+function populateArena(state: GameState): void {
+  const spots = arenaSpots(state.floor, ARENA_MONSTERS + ARENA_ITEMS);
+  const mirror = (p: Pos): Pos => ({ x: state.floor.width - 1 - p.x, y: p.y });
+
+  for (let i = 0; i < spots.length; i++) {
+    const pos = spots[i];
+    if (i < ARENA_MONSTERS) {
+      /*
+       * 敵はコウモリとゴブリンだけ。**種類も左右で同じものを置く。**
+       * モンスターはどちらの陣営でもない（team 'M'）ので、
+       * 両チームの共通の障害物になる。
+       */
+      const speciesId = i % 2 === 0 ? 'goblin' : 'bat';
+      spawnMonster(state, speciesId, pos);
+      spawnMonster(state, speciesId, mirror(pos));
+    } else {
+      // 左右で同じ中身。片方だけ薬草が出る盤を作らない
+      const itemId: ItemId = i % 2 === 0 ? 'potion' : 'torch';
+      for (const p of [pos, mirror(pos)]) {
+        state.items.push({ id: newId('i'), itemId, pos: p, ownerId: null, at: null, rot: 0 });
+      }
+    }
+  }
+}
+
+/**
+ * 対戦を始めるときに、空いている席を AI で埋める（段階 D6）。
+ *
+ * **これが「作者1人で通しで確認できる」の全部。**
+ * 人間を2人そろえないと一度も遊べない状態では、対戦の作りかけを
+ * 確かめる手段が無い。AI は人間とまったく同じ規則で動く駒で、
+ * 違うのは行動を誰が決めるかだけ（Actor.bot に理由）。
+ */
+export function fillWithBots(state: GameState): void {
+  if (state.mode !== 'versus') return;
+
+  const seats = TEAM_SIZE * 2;
+  // addPlayer が空いている一番小さい slot を取るので、埋まるまで足すだけでよい
+  while (state.actors.filter((a) => a.kind === 'player').length < seats) {
+    const id = newId('bot');
+    addPlayer(state, id);
+    const bot = state.actors.find((a) => a.id === id);
+    if (!bot) break; // 念のため。無限に回さない
+    bot.bot = true;
+    bot.name = 'あいて';
+
+    /*
+     * **相手と同じ職業にする。**
+     *
+     * addPlayer の既定は「まだ誰も選んでいない職業」なので、
+     * 戦士を選んだ人の相手が魔法使いになる。盤を鏡像にしてまで
+     * 条件を揃えたのに、職業差が抽選で決まっては意味がない。
+     * 鏡の相手は自分と同じ性能にして、差は**判断だけ**にする。
+     *
+     * 持ち込み（倉庫から入れたもの）は AI には無いので、そこはまだ揃っていない。
+     * 揃えるのは段階 D8（ドラフト）の仕事。
+     */
+    const mirrorSlot = bot.slot > TEAM_SIZE ? bot.slot - TEAM_SIZE : bot.slot + TEAM_SIZE;
+    const foe = state.actors.find((a) => a.kind === 'player' && a.slot === mirrorSlot);
+    if (foe?.job) chooseJob(state, bot.id, foe.job);
+
+    pushLog(state, `${bot.slot}番は AI が動かす`);
+  }
 }
 
 /** 今いるフロアにモンスターとアイテムを撒く */
@@ -417,10 +543,50 @@ export function inventoryOf(state: GameState, ownerId: string): ItemInstance[] {
   return state.items.filter((i) => i.ownerId === ownerId);
 }
 
+/*
+ * ────────── ログのスコープ（03_改善構成.md 段階D D4） ──────────
+ */
+
+/**
+ * いま出すログを誰に見せるか。null は全員。
+ *
+ * **モジュールの変数に置いてある。** pushLog の引数にすると、
+ * 60か所ある呼び出しを全部直すことになり、1か所書き忘れただけで
+ * 相手の行動が漏れる。resolve が「いま誰の行動を処理しているか」を
+ * ここに置き、pushLog はそれを読むだけにしておけば、書き忘れが起きない。
+ *
+ * サーバーは1プロセスで、1ターンの解決は途中で中断されない（await が無い）。
+ * だから部屋が複数あっても混ざらない。await を入れる日が来たら、
+ * ここを state の欄に移すこと。
+ */
+let currentLogScope: TeamId | null = null;
+
+/**
+ * これから出すログを誰に見せるか決める。
+ * Actor をそのまま渡せる（モンスターは 'M' なので「全員」になる）。
+ */
+export function setLogScope(team: TeamId | 'M' | null): void {
+  currentLogScope = team === 'M' ? null : team;
+}
+
+/**
+ * いま誰向けになっているか。
+ * 一時的に広げてから戻したい側（combat.ts の殴り合い）が読む。
+ */
+export function logScopeNow(): TeamId | null {
+  return currentLogScope;
+}
+
 /** ログは増えすぎないように頭から捨てる */
 export function pushLog(state: GameState, message: string): void {
   state.log.push(message);
-  if (state.log.length > 20) state.log.shift();
+  state.logScope.push(currentLogScope);
+  if (state.log.length > 20) {
+    state.log.shift();
+    // 2つの配列は同じ長さ・同じ並びでなければならない。
+    // ずれると「誰に見せるか」が1行ぶん後ろの行に付く
+    state.logScope.shift();
+  }
 }
 
 // ITEMS は重み付きテーブルの妥当性チェックにだけ使う

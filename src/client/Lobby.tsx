@@ -3,7 +3,14 @@ import { DUNGEONS, DUNGEON_IDS, dungeonOf, isUnlocked, type DungeonId } from '..
 import { itemDefOf, type ItemId } from '../shared/items';
 import { JOBS, JOB_IDS, jobOf, type JobId } from '../shared/jobs';
 import { BASE_SKILL, SKILLS, skillOf, type SkillId } from '../shared/skills';
-import { BAG_H, BAG_W, MAX_PLAYERS, type GameState } from '../shared/types';
+import {
+  BAG_H,
+  BAG_W,
+  MAX_PLAYERS,
+  TEAM_SIZE,
+  VERSUS_PLAYERS,
+  type GameState,
+} from '../shared/types';
 import { HowTo } from './HowTo';
 import { Icon, JobIcon, Portrait, TileIcon } from './Icon';
 import { Invite } from './Invite';
@@ -22,6 +29,11 @@ type Props = {
   onRename: (name: string) => void;
   /** 行き先を変える。合流した人は変えられないので null が来る */
   onChooseDungeon: ((id: DungeonId) => void) | null;
+  /**
+   * 対戦の部屋を作り直す。合流した人は変えられないので null が来る。
+   * 部屋ごと作り直すのは、盤が鏡像かどうかが部屋を作るときに決まるため。
+   */
+  onVersus: (() => void) | null;
 };
 
 type Tab = 'home' | 'gear' | 'dungeon';
@@ -57,6 +69,7 @@ export function Lobby({
   onSkillPick,
   onRename,
   onChooseDungeon,
+  onVersus,
 }: Props) {
   const [tab, setTab] = useState<Tab>('home');
   const [copied, setCopied] = useState(false);
@@ -78,6 +91,11 @@ export function Lobby({
   const myJob: JobId = (me?.job as JobId | null) ?? 'warrior';
   const job = jobOf(myJob);
   const here = dungeonOf(state.dungeon);
+  /*
+   * 対戦の部屋かどうか。見た目を変えるのはこの画面だけで、
+   * 盤のルールはすべてサーバーが持っている（クライアントは state を描くだけ）。
+   */
+  const versus = state.mode === 'versus';
   const learned = learnedOf(myJob).filter((id) => id !== BASE_SKILL[myJob]);
 
   useEffect(() => {
@@ -199,9 +217,13 @@ export function Lobby({
               </button>
             </div>
 
-            {/* 仲間。顔を並べるだけ。空きは丸で出す */}
+            {/*
+              仲間（対戦なら相手）。顔を並べるだけ。空きは丸で出す。
+              対戦の枠は TEAM_SIZE * 2。空いた席は始めるときに AI が埋める
+              ので、1人でも押せる（03_改善構成.md 段階D D6）。
+            */}
             <div className="party-row">
-              {Array.from({ length: MAX_PLAYERS }, (_, i) => {
+              {Array.from({ length: versus ? VERSUS_PLAYERS : MAX_PLAYERS }, (_, i) => {
                 const p = players[i];
                 return (
                   <span key={i} className={`slot-face${p ? '' : ' empty'}`} title={p?.name}>
@@ -215,6 +237,31 @@ export function Lobby({
                 <span>さそう</span>
               </button>
             </div>
+
+            {/*
+              協力 ⇄ 対戦の行き来。
+              部屋を作るときにしか決められないので、押すとページ遷移になる。
+              合流した人は変えられない（onVersus が null）。
+            */}
+            {versus ? (
+              <button
+                className="icon-btn wide-chip"
+                disabled={onChooseDungeon === null}
+                onClick={() => onChooseDungeon?.('ruin')}
+              >
+                <Icon id="helmet" size={16} />
+                <span>協力にもどる</span>
+              </button>
+            ) : (
+              <button
+                className="icon-btn wide-chip"
+                disabled={onVersus === null}
+                onClick={() => onVersus?.()}
+              >
+                <Icon id="sword2" size={16} />
+                <span>対戦（AI 相手）</span>
+              </button>
+            )}
 
           </div>
         )}
@@ -390,9 +437,11 @@ export function Lobby({
       {tab === 'home' && (
         <button className="launch" onClick={onStart}>
           <span className="launch-sub">
-            {here.name} B{here.depth}F
+            {versus
+              ? `${TEAM_SIZE}vs${TEAM_SIZE}  空いた席は AI`
+              : `${here.name} B${here.depth}F`}
           </span>
-          <span className="launch-main">出撃</span>
+          <span className="launch-main">{versus ? '対戦' : '出撃'}</span>
         </button>
       )}
 

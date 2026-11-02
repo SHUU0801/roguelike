@@ -114,7 +114,7 @@ function cleave(state: GameState, actor: Actor): boolean {
   const bonus = focusBonus(actor);
   for (const target of targets) {
     if (!target.alive) continue;
-    attack(state, actor, target, { pvp: false });
+    attack(state, actor, target);
     // 「極め」のぶんは別に足す。atk を直接いじると通常の殴りまで強くなる
     if (bonus > 0 && target.alive) damage(state, target, bonus, actor);
   }

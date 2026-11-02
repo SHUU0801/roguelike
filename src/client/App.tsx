@@ -12,7 +12,7 @@ import { Lobby } from './Lobby';
 import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
 import { dirBetween, findPath, shouldStop } from './travel';
-import { goToDungeon, useGame } from './useGame';
+import { goToDungeon, goToVersus, useGame } from './useGame';
 import { DURATION } from './motion';
 import { recordRun, loadProfile } from './profile';
 import { bringHome, markCleared, markTutorialDone, rememberSkills, spendFromStash } from './stash';
@@ -219,6 +219,19 @@ export function App() {
       .map((i) => i.itemId as ItemId);
 
     /*
+     * 対戦も**何も払い出さない。**
+     *
+     * 倉庫・踏破数・経験は協力の周回（07_ホームと周回.md）の仕組みで、
+     * 対戦はその外にある。勝つと装備が増える形にすると、
+     * 勝った人がさらに強い装備で次の対戦に出てくることになり、
+     * 「運で負けた」の代わりに「周回量で負けた」が生まれる。
+     */
+    if (conn.state.mode === 'versus') {
+      broughtRef.current = [];
+      return;
+    }
+
+    /*
      * チュートリアルは**何も払い出さない。**
      * 経験も倉庫も踏破数も動かさない。
      * 動かすと、剣が1本もらえる練習場を何度でも回せてしまう。
@@ -318,6 +331,10 @@ export function App() {
 
   const { state, myId, send, start, inviteUrl } = conn;
 
+  // 合流して入ってきた人（?room= 付き）は、行き先も協力／対戦も変えられない。
+  // 変えると部屋ごと作り直しになり、先に入っている人が置いていかれる
+  const joined = new URLSearchParams(window.location.search).get('room') !== null;
+
   if (state.phase === 'lobby') {
     return (
       <Lobby
@@ -330,7 +347,9 @@ export function App() {
         onSkillPick={conn.setSkillPick}
         onRename={conn.setPlayerName}
         /* 合流した人は行き先を変えられない。変えると先に入っている人が困る */
-        onChooseDungeon={new URLSearchParams(window.location.search).get('room') ? null : goToDungeon}
+        onChooseDungeon={joined ? null : goToDungeon}
+        /* 協力 ⇄ 対戦も同じ。部屋ごと作り直すので、合流した人は変えられない */
+        onVersus={joined ? null : goToVersus}
       />
     );
   }
@@ -454,7 +473,20 @@ export function App() {
         <TutorialGuide state={state} me={me} />
       )}
 
-      {state.phase === 'won' && (
+      {/*
+        対戦の決着。協力の「踏破した！」とは別の文面にする。
+        相手を倒して終わったのに「踏破した！ 42 ターン」と出ると、
+        何に勝ったのか分からない。
+      */}
+      {state.mode === 'versus' && (state.phase === 'won' || state.phase === 'lost') && (
+        <div className={`banner ${state.phase === 'won' ? 'win' : 'lose'}`}>
+          <span>
+            {state.phase === 'won' ? '勝った！' : '負けた…'} {state.turn} ターン
+          </span>
+          <button onClick={() => location.reload()}>もう一度</button>
+        </div>
+      )}
+      {state.mode !== 'versus' && state.phase === 'won' && (
         <div className="banner win">
           {/*
             チュートリアルを「踏破した！」とは呼ばない。練習に記録は要らない。
@@ -474,7 +506,7 @@ export function App() {
           )}
         </div>
       )}
-      {state.phase === 'lost' && (
+      {state.mode !== 'versus' && state.phase === 'lost' && (
         <div className="banner lose">
           <span>
             {/* 自分で帰ったのに「全滅」と言われると、負かされた気分になる */}

@@ -82,7 +82,7 @@ export function monsterAct(state: GameState, monster: Actor): void {
 
   // 移動は上下左右だけなので、攻撃も縦横に隣接しているときだけ
   if (manhattan(monster.pos, target.pos) === 1) {
-    attack(state, monster, target, { pvp: false });
+    attack(state, monster, target);
     return;
   }
 
@@ -166,8 +166,24 @@ function canSee(state: GameState, from: Pos, to: Pos): boolean {
  *
  * ただ突っ立っているだけだと、一度背後を取れば永久に安全になる。
  * ときどき向きを変えるので、回り込むには見ている方向を読む必要が出る。
+ *
+ * ## 対戦では動かない（03_改善構成.md 段階D）
+ *
+ * **この関数がモンスター側の乱数のほぼ全部。**
+ * 対戦でこれを残すと、鏡像で左右まったく同じ盤を作っても、
+ * 同じ位置のゴブリンが片方では通路をふさぎ、片方では部屋の隅に寄る。
+ * 盤を対称にした意味が消えて「運で負けた」が戻ってくる。
+ *
+ * だから対戦では**見つけるまで一切動かない**。向きも変えない。
+ * 見つけたあとの追跡（chaseTarget / stepToward）は決定論なので、
+ * そのまま使える。
+ *
+ * 「運で負けた」が出たときに最初に疑うのがここだと仕様書に書いてある
+ * （疑う順①）。疑う前に、まずここを読めば分かるようにしておく。
  */
 function patrol(state: GameState, monster: Actor): void {
+  if (state.mode === 'versus') return;
+
   const roll = randInt(0, 3);
 
   if (roll === 0) {

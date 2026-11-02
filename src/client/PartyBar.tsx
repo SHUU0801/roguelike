@@ -13,7 +13,18 @@ type Props = {
  * 待っている相手を名指しで出す。
  */
 export function PartyBar({ state, myId }: Props) {
-  const players = state.actors.filter((a) => a.kind === 'player');
+  /*
+   * 自分のチームだけ出す。
+   *
+   * 協力モードはプレイヤーが全員チーム A なので**変化ゼロ**。
+   * 対戦では、見えている相手がここに並ぶと「味方の一覧」に敵が混ざる。
+   * 相手の HP は盤の上で見るもので、この行の役目は
+   * 「誰の行動を待っているか」なので、自陣だけでいい。
+   */
+  const myTeam = state.actors.find((a) => a.id === myId)?.team;
+  const players = state.actors.filter(
+    (a) => a.kind === 'player' && (myTeam === undefined || a.team === myTeam),
+  );
   if (players.length < 2) return null;
 
   const waiting = new Set(state.waitingFor);

@@ -1,4 +1,4 @@
-import type { Floor, Pos, Rect, TileKind } from '../shared/types';
+import type { Floor, Pos, Rect, TeamId, TileKind } from '../shared/types';
 import { pick, randInt, shuffle } from './random';
 
 /**
@@ -204,6 +204,193 @@ export function scatterPositions(floor: Floor, count: number): Pos[] {
     }
   }
 
+  return shuffle(candidates).slice(0, count);
+}
+
+/*
+ * ────────── 鏡像フロア（対戦。03_改善構成.md 段階D D5） ──────────
+ */
+
+/**
+ * 対戦のフロアの広さ。
+ *
+ * **幅は必ず偶数**にする（半分を掘って折り返すので）。
+ * 協力の `15 + depth` より小さい。対戦は「探して歩く」より
+ * 「ぶつかってから考える」時間を長くしたいので、出会うまでを短くする。
+ * **机上の値。遊んで詰める。**
+ */
+const ARENA_HALF_W = 9;
+const ARENA_H = 15;
+
+/**
+ * 鏡像フロア。片側だけ掘って、左右に折り返す。
+ *
+ * ## なぜ鏡像にするか
+ *
+ * 対戦で一番避けたいのが「運で負けた」（00_ゴール定義.md）。
+ * ふつうに生成すると、片側に部屋が3つ・もう片側に1つという盤が出る。
+ * **地形の有利不利が抽選で決まる**のは、その最悪の形。
+ * 左右対称なら、両者の条件は定義上まったく同じになる。
+ *
+ * ## ここで気づいた一番大事なこと
+ *
+ * **地形は隠さなくてよい。**
+ * 相手の陣地は自陣をそのまま裏返したものなので、見えても新しい情報がない。
+ * 隠すのは Actor の位置・床のアイテム・ログ・視界の4つだけで足りる。
+ * 「タイル配列を部分マスクして送る」を作らずに済み、
+ * 作業量が3分の1になった（03_改善構成.md 段階D の判断(1)）。
+ *
+ * ## 真ん中について
+ *
+ * 半分の右端（x = ARENA_HALF_W - 1）まで通路を1本必ず掘る。
+ * 折り返すと、その通路が中央でつながって左右の行き来ができる。
+ * **段階 D7 の扉はちょうどこの位置に置く。** いまは開いたままにしておく。
+ */
+export function createMirrorFloor(depth = 1): Floor {
+  const half = carveHalf(ARENA_HALF_W, ARENA_H);
+  const width = ARENA_HALF_W * 2;
+
+  const tiles: TileKind[] = new Array<TileKind>(width * ARENA_H).fill('wall');
+  for (let y = 0; y < ARENA_H; y++) {
+    for (let x = 0; x < ARENA_HALF_W; x++) {
+      const kind = half.tiles[y * ARENA_HALF_W + x];
+      tiles[y * width + x] = kind;
+      // 折り返し。左端が右端に、中央が中央の隣に来る
+      tiles[y * width + (width - 1 - x)] = kind;
+    }
+  }
+
+  /*
+   * 部屋の一覧も折り返す。視界が「部屋ごと」なので、
+   * ここを忘れると相手側の部屋に入っても足元8マスしか見えない。
+   */
+  const rooms: Rect[] = [];
+  for (const r of half.rooms) rooms.push(r);
+  for (const r of half.rooms) {
+    rooms.push({ x: width - r.x - r.w, y: r.y, w: r.w, h: r.h });
+  }
+
+  return {
+    depth,
+    width,
+    height: ARENA_H,
+    tiles,
+    rooms,
+    seen: new Array<boolean>(width * ARENA_H).fill(false),
+    visible: new Array<boolean>(width * ARENA_H).fill(false),
+  };
+}
+
+/**
+ * 片側だけを掘る。部屋 → L字通路 → 中央への通路。
+ *
+ * 階段は置かない。対戦は**相手を倒して決まる**ので、降りる先が無い。
+ * （段階 D7 以降で「開門」を置くのはこの中央の通路）
+ */
+function carveHalf(width: number, height: number): Floor {
+  const tiles: TileKind[] = new Array<TileKind>(width * height).fill('wall');
+  const rooms: Rect[] = [];
+
+  /*
+   * 部屋は縦に並べる。
+   *
+   * 協力と同じ「ランダムに置いて重なったら捨てる」だと、
+   * 幅 9 では1つしか置けない盤がしょっちゅう出る。
+   * 対戦は盤が小さいので、**部屋が確実に複数ある**ほうを採った。
+   * 縦の帯に分けて、その中で位置と大きさだけ振る。
+   */
+  const bands = 3;
+  const bandH = Math.floor((height - 2) / bands);
+  for (let i = 0; i < bands; i++) {
+    const h = Math.min(bandH, randInt(3, 4));
+    const w = randInt(4, width - 2);
+    rooms.push({
+      x: randInt(1, width - w - 1),
+      y: 1 + i * bandH + randInt(0, Math.max(0, bandH - h)),
+      w,
+      h,
+    });
+  }
+
+  const floor: Floor = {
+    depth: 1,
+    width,
+    height,
+    tiles,
+    rooms,
+    seen: new Array<boolean>(width * height).fill(false),
+    visible: new Array<boolean>(width * height).fill(false),
+  };
+
+  for (const room of rooms) {
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        setTile(floor, x, y, 'floor');
+      }
+    }
+  }
+
+  for (let i = 1; i < rooms.length; i++) {
+    carveCorridor(floor, centerOf(rooms[i - 1]), centerOf(rooms[i]));
+  }
+
+  // 中央へ抜ける通路。折り返したときに左右をつなぐ唯一の道になる。
+  // 真ん中の帯から掘るので、どちらの陣地からも同じ距離
+  const mid = centerOf(rooms[Math.floor(rooms.length / 2)]);
+  carveH(floor, mid.x, width - 1, mid.y);
+
+  return floor;
+}
+
+/**
+ * 対戦の出現位置。チームごとに自陣の奥。
+ *
+ * A は左の一番奥（x が小さい側）、B はその鏡。
+ * **鏡なので中央からの距離は必ず等しい。** 先に着く側が生まれない。
+ */
+export function arenaSpawn(floor: Floor, team: TeamId, index = 0): Pos {
+  const half = floor.width / 2;
+
+  // 自陣側の床マスのうち、中央から一番遠いもの
+  const mine: Pos[] = [];
+  for (const room of floor.rooms) {
+    if (room.x >= half) continue; // 左半分の部屋だけ見る
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        if (tileOf(floor, x, y) !== 'floor') continue;
+        mine.push({ x, y });
+      }
+    }
+  }
+  // 乱数を使わずに並べる。対戦の出発点が抽選で決まってはいけない。
+  // x が小さい順、同じなら y が小さい順
+  mine.sort((a, b) => a.x - b.x || a.y - b.y);
+
+  const base = mine[Math.min(index, Math.max(0, mine.length - 1))] ?? { x: 1, y: 1 };
+  if (team === 'A') return base;
+  return { x: floor.width - 1 - base.x, y: base.y };
+}
+
+/**
+ * 対戦でモンスターとアイテムを置く位置。**左半分だけ返す。**
+ * 置く側（game.ts）が鏡の位置にも同じものを置く。
+ */
+export function arenaSpots(floor: Floor, count: number): Pos[] {
+  const half = floor.width / 2;
+  const spawnA = arenaSpawn(floor, 'A');
+
+  const candidates: Pos[] = [];
+  for (const room of floor.rooms) {
+    if (room.x >= half) continue;
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        if (tileOf(floor, x, y) !== 'floor') continue;
+        // 出発点の真上には置かない。開幕で勝手に拾う／殴られるのを避ける
+        if (Math.abs(x - spawnA.x) + Math.abs(y - spawnA.y) <= 1) continue;
+        candidates.push({ x, y });
+      }
+    }
+  }
   return shuffle(candidates).slice(0, count);
 }
 
