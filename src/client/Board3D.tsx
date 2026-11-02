@@ -22,6 +22,7 @@ import {
   type Dir,
   type GameState,
 } from '../shared/types';
+import { DURATION, motionAt, type MotionKind } from './motion';
 import type { TurnEffects } from './useTurnEffects';
 
 /**
@@ -66,11 +67,6 @@ const CAM_DIST = 30;
 /** 壁の高さ。高くすると手前の壁が人を隠す */
 const WALL_H = 0.55;
 
-/** 動きの長さ（秒）。CSS 版と揃える */
-const T_MOVE = 0.32;
-const T_LUNGE = 0.3;
-const T_HIT = 0.36;
-const T_DIE = 0.45;
 
 type Props = {
   state: GameState;
@@ -83,7 +79,7 @@ type Props = {
 
 /** 1枚の板に付ける動き。描画ループが毎フレーム読む */
 type Anim = {
-  kind: 'moved' | 'lunge' | 'hit' | 'die';
+  kind: MotionKind;
   dx: number;
   dy: number;
   start: number;
@@ -162,6 +158,27 @@ function poseFor(facing: Dir, attacking: boolean): { pose: number; flip: boolean
   }
 }
 
+
+/**
+ * 歩いている間に送るコマ。
+ *
+ * 滑らせるだけだと、足が動かないので「進んでいる」ではなく
+ * 「滑っている」に見える。1歩のあいだに2コマ送る。
+ *
+ * 横向きは踏み込み（dash）と立ち（idle）で足の位置が違うので、
+ * その2枚を交互に出せば歩いて見える。
+ *
+ * **前と後ろには歩きのコマが無い。** もらった絵は正面・後ろとも1枚きり。
+ * そこは左右反転を交互に出して体重の移動に見せる。
+ * 外套や武器が左右に揺れるので、止まって見えるよりはずっといい。
+ */
+function walkFrames(facing: Dir): [{ pose: number; flip: boolean }, { pose: number; flip: boolean }] {
+  if (facing === 'e') return [{ pose: POSE.dash, flip: false }, { pose: POSE.idle, flip: false }];
+  if (facing === 'w') return [{ pose: POSE.dash, flip: true }, { pose: POSE.idle, flip: true }];
+  const pose = facing === 'n' ? POSE.back : POSE.idle;
+  return [{ pose, flip: false }, { pose, flip: true }];
+}
+
 export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Props) {
   const host = useRef<HTMLDivElement | null>(null);
 
@@ -180,6 +197,16 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     look: THREE.Vector3;
     target: THREE.Vector3;
   } | null>(null);
+
+  /*
+   * 動きの始まった時刻。**ターンごとに1回だけ決める。**
+   *
+   * 建て直しのたびに performance.now() を入れていたら、
+   * React が再描画するたびに動きが振り出しに戻り、
+   * **歩きのコマが1枚目から進まなかった**（足が動かない原因）。
+   * 動きはターンに属するもので、再描画の回数とは関係ない。
+   */
+  const beat = useRef({ turn: -1, at: 0 });
 
   /** 最新の値をイベントハンドラと描画ループから読むための箱 */
   const live = useRef({ state, myId, onMove, onTravel });
@@ -230,7 +257,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     const things = new THREE.Group();
     scene.add(ground, things);
 
-    kit.current = {
+    const mine = {
       renderer,
       scene,
       camera,
@@ -244,6 +271,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       look: new THREE.Vector3(),
       target: new THREE.Vector3(),
     };
+    kit.current = mine;
 
     const resize = () => {
       const w = el.clientWidth;
@@ -262,39 +290,53 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     const ro = new ResizeObserver(resize);
     ro.observe(el);
 
+
+    // 開発中だけ、中身を覗けるようにしておく（画面から調べる手段が無いので）
+    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__b3d = kit;
+
+    return () => {
+      ro.disconnect();
+      renderer.dispose();
+      if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
+      // 自分がまだ現役のときだけ片付ける。新しい側を巻き込まない
+      if (kit.current === mine) kit.current = null;
+    };
+  }, []);
+
+
+  /*
+   * 描画ループ。**何も持たない別の effect にしてある。**
+   *
+   * 組み立てと同じ effect に入れていたとき、開発中の二重マウントで
+   * ループと場面がちぐはぐになった。画面には絵が出ているのに
+   * renderer は1コマしか描いておらず、動きが1つも効かない——
+   * ループが古い側を、板を建てるのは新しい側を見ていた。
+   *
+   * ループが自前の道具を一切持たず、毎コマ ref から現役の一式を読めば、
+   * どちらを見ているか迷いようがない。
+   */
+  useEffect(() => {
     const eye = new THREE.Vector3(
       Math.sin(CAM_YAW) * CAM_DIST,
       Math.tan(CAM_TILT) * CAM_DIST,
       Math.cos(CAM_YAW) * CAM_DIST,
     );
-    const look = kit.current.look;
-    const target = kit.current.target;
+    let stop = false;
 
-    // 開発中だけ、中身を覗けるようにしておく（画面から調べる手段が無いので）
-    if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__b3d = kit;
-
-    /*
-     * 描画ループ。
-     *
-     * **ここで kit.current を見てはいけない。**
-     * 最初そう書いたら、開発中の二重マウント（StrictMode）で
-     * 一瞬 null になった拍子に `return` して、**次のコマを予約せずに止まった。**
-     * 10 コマで固まって、カメラが初期位置のまま動かなくなる。
-     * ループは自分の変数だけを見て、終わりは旗で知る。
-     */
-    let alive = true;
-    const loop = () => {
-      if (!alive) return;
-      requestAnimationFrame(loop);
+    const tick = () => {
+      if (stop) return;
+      requestAnimationFrame(tick);
+      const k = kit.current;
+      if (!k) return;
 
       // カメラを目標へ近づける。瞬間移動させると1歩ごとに画面が飛ぶ。
       // 指数で寄せると、止まるときに自然に減速する
-      look.lerp(target, 0.18);
-      camera.position.copy(look).add(eye);
-      camera.lookAt(look);
+      k.look.lerp(k.target, 0.18);
+      k.camera.position.copy(k.look).add(eye);
+      k.camera.lookAt(k.look);
 
       const now = performance.now() / 1000;
-      for (const o of things.children) {
+      for (const o of k.things.children) {
         const a = o.userData.anim as Anim | undefined;
         const base = o.userData.base as THREE.Vector3 | undefined;
         if (!base) continue;
@@ -308,56 +350,51 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         const glow = (v: number) => mat.emissive?.setScalar(v);
         const flat = o.userData.flat === true;
         const solid = flat ? 0.55 : 1;
+        /** 歩きの途中で動かした切り出し位置を元へ戻す */
+        const settle = () => {
+          const w = o.userData.walk as { rest: number } | undefined;
+          if (w && mat.map) mat.map.offset.x = w.rest;
+        };
         if (!a) {
           mat.opacity = solid;
           glow(0);
+          settle();
           continue;
         }
 
-        const dur =
-          a.kind === 'moved' ? T_MOVE
-          : a.kind === 'lunge' ? T_LUNGE
-          : a.kind === 'hit' ? T_HIT
-          : T_DIE;
-        const t = (now - a.start) / dur;
-        if (t >= 1) {
+        const t = (now - a.start) / DURATION[a.kind];
+        const mv = motionAt(a.kind, t, a.dx, a.dy);
+        if (mv.done) {
           delete o.userData.anim;
           mat.opacity = solid;
           glow(0);
+          settle();
           continue;
         }
 
-        if (a.kind === 'moved') {
-          // 元いた方向から滑り込む
-          const back = 1 - t;
-          o.position.x -= a.dx * back;
-          o.position.z -= a.dy * back;
-        } else if (a.kind === 'lunge') {
-          // 行って帰る。山なりにすると「突いた」感じになる
-          const out = Math.sin(t * Math.PI) * 0.4;
-          o.position.x += a.dx * out;
-          o.position.z += a.dy * out;
-        } else if (a.kind === 'hit') {
-          o.position.x += Math.sin(t * Math.PI * 6) * 0.12;
-          glow(Math.max(0, 0.9 - t * 3)); // 一瞬白く飛ばす
-        } else {
-          // 回って沈んで消える
-          o.position.y -= t * 0.5;
-          if (!flat) o.rotation.z = t * 1.2;
-          mat.opacity = solid * (1 - t);
+        o.position.x += mv.dx;
+        o.position.z += mv.dz;
+        o.position.y += mv.dy;
+        if (!flat) o.rotation.z = mv.spin;
+        mat.opacity = solid * mv.fade;
+        glow(mv.glow);
+
+        /*
+         * 足のコマ。**map を差し替えてはいけない。**
+         * 差し替えるとシェーダが組み直されて重い。切り出し位置だけ動かす。
+         */
+        const w = o.userData.walk as { cols: [number, number]; total: number } | undefined;
+        if (a.kind === 'moved' && w && mat.map) {
+          mat.map.offset.x = w.cols[mv.step] / w.total;
         }
       }
 
-      renderer.render(scene, camera);
+      k.renderer.render(k.scene, k.camera);
     };
-    loop();
+    tick();
 
     return () => {
-      alive = false;
-      ro.disconnect();
-      renderer.dispose();
-      if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
-      kit.current = null;
+      stop = true;
     };
   }, []);
 
@@ -369,7 +406,10 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     const me = state.actors.find((a) => a.id === myId);
     const floor = state.floor;
     const theme = dungeonOf(state.dungeon).theme;
-    const now = performance.now() / 1000;
+    if (beat.current.turn !== state.turn) {
+      beat.current = { turn: state.turn, at: performance.now() / 1000 };
+    }
+    const now = beat.current.at;
 
     const frame = (sheet: THREE.Texture, cols: number, rows: number, c: number, r: number) => {
       const key = `${sheet.uuid}:${c},${r}`;
@@ -489,19 +529,34 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       if (!a.alive && a.kind === 'monster') continue;
 
       let tex: THREE.Texture;
+      /** 歩いている間に送るコマの列番号。描画ループが offset を動かす */
+      let walk: [number, number] | null = null;
+
       if (a.kind === 'player') {
         const row = PORTRAIT_ROW[a.job ?? 'warrior'];
         const attacking = turnEffects.effects.get(a.id)?.kind === 'lunge';
         const look = a.alive
           ? poseFor(a.facing, attacking)
           : { pose: POSE.down, flip: a.facing === 'w' };
-        tex = frame(
-          k.jobs,
-          JOB_SHEET.cols,
-          JOB_SHEET.rows,
-          look.pose + (look.flip ? FLIP_OFFSET : 0),
-          row,
+        const col = (p: { pose: number; flip: boolean }) =>
+          p.pose + (p.flip ? FLIP_OFFSET : 0);
+
+        /*
+         * **板ごとに自前のテクスチャを持つ。**
+         * 共有しているものの offset を動かすと、同じ絵を使う全員が一緒に動く。
+         * 切り出し位置を毎コマ変えたいので、ここだけ clone する。
+         */
+        tex = k.jobs.clone();
+        tex.needsUpdate = true;
+        tex.repeat.set(1 / JOB_SHEET.cols, 1 / JOB_SHEET.rows);
+        tex.offset.set(
+          col(look) / JOB_SHEET.cols,
+          1 - (row + 1) / JOB_SHEET.rows,
         );
+        if (a.alive && !attacking) {
+          const [f0, f1] = walkFrames(a.facing);
+          walk = [col(f0), col(f1)];
+        }
       } else {
         tex = tileTex(speciesOf(a.speciesId).sprite);
       }
@@ -519,6 +574,14 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       const feet = h / 2 - 0.12;
       const shade = shadowFor(a.pos.x, a.pos.y, h * 0.8);
       const m = put(tex, h, a.pos.x, a.pos.y, feet);
+      if (walk) {
+        // 歩き終わったら戻す位置も覚えておく。戻さないと踏み出した足のまま止まる
+        m.userData.walk = {
+          cols: walk,
+          total: JOB_SHEET.cols,
+          rest: tex.offset.x,
+        };
+      }
 
       const fx = turnEffects.effects.get(a.id);
       if (fx) {

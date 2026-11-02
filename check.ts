@@ -7,6 +7,7 @@ import {
   startGame,
 } from './src/server/game';
 import { createFloor, spawnPos } from './src/server/dungeon';
+import { DURATION, motionAt } from './src/client/motion';
 import { dungeonOf } from './src/shared/dungeons';
 import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
 import { awardExp, takePerk } from './src/server/levels';
@@ -1214,6 +1215,49 @@ function putMonster(
    */
   turn(state, { type: 'move', dir: 'n' });
   assert(me.facing === 'n', `上へ歩くと北を向く (${me.facing})`);
+}
+
+// --- 57. 歩いている間に足のコマが入れ替わる ---
+{
+  /*
+   * 3D の盤は毎コマ rAF で描いている。確認に使うブラウザのペインが
+   * 隠れていると rAF が呼ばれず、画面が止まったまま動かない。
+   * それを「ループが死んでいる」と読み違えて3回書き直した。
+   * 計算をここで確かめられるようにして、目で見るのは仕上げだけにする。
+   */
+  const steps = new Set<number>();
+  for (let i = 0; i < 20; i++) steps.add(motionAt('moved', i / 20, 1, 0).step);
+  assert(steps.size === 2, `1歩のあいだに足が入れ替わる (${[...steps].join(',')})`);
+
+  // 滑り込み。始まりは1マス後ろ、終わりは到着している
+  const a = motionAt('moved', 0, 1, 0);
+  assert(Math.abs(a.dx + 1) < 0.01, `出だしは1マス後ろ (${a.dx.toFixed(2)})`);
+  const b = motionAt('moved', 0.999, 1, 0);
+  assert(Math.abs(b.dx) < 0.02, `着いたらずれが無い (${b.dx.toFixed(3)})`);
+  assert(motionAt('moved', 1, 1, 0).done, '1 を超えたら終わり');
+
+  // 跳ねて見えない程度。上下は小さく
+  let lift = 0;
+  for (let i = 0; i <= 20; i++) lift = Math.max(lift, motionAt('moved', i / 20, 1, 0).dy);
+  assert(lift > 0 && lift < 0.1, `上下は控えめ (${lift.toFixed(3)})`);
+}
+
+// --- 58. 殴る・被弾・消えるの形 ---
+{
+  // 踏み込みは行って帰る。真ん中で一番出ている
+  const mid = motionAt('lunge', 0.5, 1, 0).dx;
+  const ends = motionAt('lunge', 0.02, 1, 0).dx + motionAt('lunge', 0.98, 1, 0).dx;
+  assert(mid > 0.3 && Math.abs(ends) < 0.1, `踏み込みは山なり (${mid.toFixed(2)})`);
+
+  // 被弾は白く飛んですぐ戻る
+  assert(motionAt('hit', 0, 0, 0).glow > 0.5, '殴られた瞬間は白い');
+  assert(motionAt('hit', 0.5, 0, 0).glow === 0, 'すぐ戻る');
+
+  // 消えるときは沈んで薄くなる
+  const d = motionAt('die', 0.8, 0, 0);
+  assert(d.fade < 0.3 && d.dy < 0, `消えぎわは沈んで薄い (${d.fade.toFixed(2)})`);
+
+  assert(DURATION.moved === 0.32, '歩きの長さは 2D 版と同じ 0.32 秒');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
