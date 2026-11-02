@@ -252,6 +252,15 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     blob: THREE.Texture;
     /** 自キャラの板。カメラがこれを追う */
     hero: THREE.Object3D | null;
+    /**
+     * カメラが見る点。
+     *
+     * 自キャラの板の位置そのものではない。**歩いたぶんだけ**追う。
+     * 板の位置をそのまま追うと、踏み込みや被弾の揺れまでカメラが
+     * 追いかけてしまい、**画面の上では動きが打ち消されて見えなくなる。**
+     * 実際それで「殴っても振りが見えない」が起きた。
+     */
+    heroCam: THREE.Vector3;
     fx: Record<FxShape, THREE.Texture>;
     /** カメラが向かう先。毎フレーム近づける */
     look: THREE.Vector3;
@@ -339,6 +348,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       frames: new Map(),
       blob: makeBlob(),
       hero: null,
+      heroCam: new THREE.Vector3(),
       fx: { slash: makeFx('slash'), burst: makeFx('burst'), ring: makeFx('ring') },
       look: new THREE.Vector3(),
       target: new THREE.Vector3(),
@@ -447,6 +457,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           mat.opacity = solid;
           glow(0);
           settle();
+          if (o === k.hero) k.heroCam.set(base.x, 0, base.z);
           continue;
         }
 
@@ -457,12 +468,23 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           mat.opacity = solid;
           glow(0);
           settle();
+          if (o === k.hero) k.heroCam.set(base.x, 0, base.z);
           continue;
         }
 
         o.position.x += mv.dx;
         o.position.z += mv.dz;
         o.position.y += mv.dy;
+
+        /*
+         * カメラが追うのは**歩いたぶんだけ。**
+         * 踏み込み（lunge）や被弾の揺れ（hit）まで追うと、
+         * 画面の上では動きが打ち消されて見えなくなる。
+         */
+        if (o === k.hero) {
+          const follow = a.kind === 'moved';
+          k.heroCam.set(base.x + (follow ? mv.dx : 0), 0, base.z + (follow ? mv.dz : 0));
+        }
         if (!flat) o.rotation.z = mv.spin;
         mat.opacity = solid * mv.fade;
         /*
@@ -497,7 +519,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
        * たまたま一致していた。
        */
       if (k.hero) {
-        k.look.set(k.hero.position.x, 0, k.hero.position.z);
+        k.look.copy(k.heroCam);
         k.camera.position.copy(k.look).add(eye);
         k.camera.lookAt(k.look);
       }
@@ -722,11 +744,18 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       const m = put(tex, h, a.pos.x, a.pos.y, feet);
       if (a.id === myId) k.hero = m;
       if (walk) {
-        // 歩き終わったら戻す位置も覚えておく。戻さないと踏み出した足のまま止まる
+        /*
+         * 動き終わったら戻す絵も覚えておく。
+         *
+         * **戻す先は必ず立ち姿。** 以前は「いま出している絵」を
+         * 戻す先にしていたので、殴ったあと**斬る絵のまま固まっていた**
+         * （次に盤が建て直されるまで剣を振り切った姿で止まる）。
+         */
+        const rest = poseFor(a.facing, false);
         m.userData.walk = {
           cols: walk,
           total: JOB_SHEET.cols,
-          rest: tex.offset.x,
+          rest: (rest.pose + (rest.flip ? FLIP_OFFSET : 0)) / JOB_SHEET.cols,
         };
       }
 
