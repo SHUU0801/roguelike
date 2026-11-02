@@ -22,7 +22,7 @@ import {
   type Dir,
   type GameState,
 } from '../shared/types';
-import { DURATION, motionAt, type MotionKind } from './motion';
+import { DURATION, motionAt, type MotionKind, type Swing } from './motion';
 import type { TurnEffects } from './useTurnEffects';
 
 /**
@@ -82,6 +82,8 @@ type Anim = {
   kind: MotionKind;
   dx: number;
   dy: number;
+  /** 殴り方。種族で変える */
+  swing: Swing;
   start: number;
 };
 
@@ -172,6 +174,13 @@ function poseFor(facing: Dir, attacking: boolean): { pose: number; flip: boolean
  * そこは左右反転を交互に出して体重の移動に見せる。
  * 外套や武器が左右に揺れるので、止まって見えるよりはずっといい。
  */
+/** 種族ごとの殴り方。2D 版（CSS の s-goblin / s-bat / s-slime）と揃える */
+function swingOf(speciesId: string | undefined): Swing {
+  if (speciesId === 'bat') return 'bite';
+  if (speciesId === 'slime') return 'squish';
+  return 'slam';
+}
+
 function walkFrames(facing: Dir): [{ pose: number; flip: boolean }, { pose: number; flip: boolean }] {
   if (facing === 'e') return [{ pose: POSE.dash, flip: false }, { pose: POSE.idle, flip: false }];
   if (facing === 'w') return [{ pose: POSE.dash, flip: true }, { pose: POSE.idle, flip: true }];
@@ -341,7 +350,10 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         const base = o.userData.base as THREE.Vector3 | undefined;
         if (!base) continue;
         o.position.copy(base);
-        if (o.userData.flat !== true) o.rotation.z = 0;
+        if (o.userData.flat !== true) {
+          o.rotation.z = 0;
+          o.scale.set(1, 1, 1);
+        }
         /*
          * 影は MeshBasicMaterial で emissive を持たない。
          * 区別せずに触ると落ちるので、持っているものだけ触る。
@@ -363,7 +375,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         }
 
         const t = (now - a.start) / DURATION[a.kind];
-        const mv = motionAt(a.kind, t, a.dx, a.dy);
+        const mv = motionAt(a.kind, t, a.dx, a.dy, a.swing);
         if (mv.done) {
           delete o.userData.anim;
           mat.opacity = solid;
@@ -378,13 +390,14 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         if (!flat) o.rotation.z = mv.spin;
         mat.opacity = solid * mv.fade;
         glow(mv.glow);
+        if (!flat) o.scale.set(mv.sx, mv.sy, 1);
 
         /*
          * 足のコマ。**map を差し替えてはいけない。**
          * 差し替えるとシェーダが組み直されて重い。切り出し位置だけ動かす。
          */
         const w = o.userData.walk as { cols: [number, number]; total: number } | undefined;
-        if (a.kind === 'moved' && w && mat.map) {
+        if ((a.kind === 'moved' || a.kind === 'lunge') && w && mat.map) {
           mat.map.offset.x = w.cols[mv.step] / w.total;
         }
       }
@@ -553,9 +566,22 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           col(look) / JOB_SHEET.cols,
           1 - (row + 1) / JOB_SHEET.rows,
         );
-        if (a.alive && !attacking) {
-          const [f0, f1] = walkFrames(a.facing);
-          walk = [col(f0), col(f1)];
+        if (a.alive) {
+          if (attacking) {
+            /*
+             * 振りかぶり → 振り抜き。
+             * 構えの絵（guard）から斬る絵（attack）へ送ると、
+             * 同じ踏み込みでも「振った」に見える。
+             */
+            const flip = a.facing === 'w';
+            walk = [
+              POSE.guard + (flip ? FLIP_OFFSET : 0),
+              POSE.attack + (flip ? FLIP_OFFSET : 0),
+            ];
+          } else {
+            const [f0, f1] = walkFrames(a.facing);
+            walk = [col(f0), col(f1)];
+          }
         }
       } else {
         tex = tileTex(speciesOf(a.speciesId).sprite);
@@ -589,6 +615,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           kind: fx.kind,
           dx: 'dx' in fx ? fx.dx : 0,
           dy: 'dy' in fx ? fx.dy : 0,
+          swing: a.kind === 'monster' ? swingOf(a.speciesId) : 'slam',
           start: now,
         } satisfies Anim;
         m.userData.anim = anim;
@@ -601,7 +628,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     // 消えたものの残像。消えるあいだだけ出す
     for (const g of turnEffects.ghosts) {
       const m = put(tileTex(g.sprite), 1.2, g.pos.x, g.pos.y, 0.5);
-      m.userData.anim = { kind: 'die', dx: 0, dy: 0, start: now } satisfies Anim;
+      m.userData.anim = { kind: 'die', dx: 0, dy: 0, swing: 'slam', start: now } satisfies Anim;
       (m.material as THREE.MeshLambertMaterial).transparent = true;
     }
 

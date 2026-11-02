@@ -1244,10 +1244,25 @@ function putMonster(
 
 // --- 58. 殴る・被弾・消えるの形 ---
 {
-  // 踏み込みは行って帰る。真ん中で一番出ている
-  const mid = motionAt('lunge', 0.5, 1, 0).dx;
-  const ends = motionAt('lunge', 0.02, 1, 0).dx + motionAt('lunge', 0.98, 1, 0).dx;
-  assert(mid > 0.3 && Math.abs(ends) < 0.1, `踏み込みは山なり (${mid.toFixed(2)})`);
+  /*
+   * 剣を振る。引いてから出す。
+   * 山なりに行って帰るだけだと、0.3秒ずっと同じ絵で「振った」に見えなかった。
+   */
+  const wind = motionAt('lunge', 0.2, 1, 0);
+  assert(wind.dx < -0.1, `まず引く (${wind.dx.toFixed(2)})`);
+  assert(wind.step === 0, '引いている間は構えの絵');
+
+  const strike = motionAt('lunge', 0.55, 1, 0);
+  assert(strike.dx > 0.4, `そこから出る (${strike.dx.toFixed(2)})`);
+  assert(strike.step === 1, '出たら斬る絵');
+
+  const home = motionAt('lunge', 0.99, 1, 0);
+  assert(Math.abs(home.dx) < 0.05, `最後は戻る (${home.dx.toFixed(3)})`);
+
+  // 引きと出のコマが両方出る。片方だけだと振って見えない
+  const swings = new Set<number>();
+  for (let i = 0; i < 20; i++) swings.add(motionAt('lunge', i / 20, 1, 0).step);
+  assert(swings.size === 2, '振りかぶりと振り抜きの2コマが出る');
 
   // 被弾は白く飛んですぐ戻る
   assert(motionAt('hit', 0, 0, 0).glow > 0.5, '殴られた瞬間は白い');
@@ -1258,6 +1273,29 @@ function putMonster(
   assert(d.fade < 0.3 && d.dy < 0, `消えぎわは沈んで薄い (${d.fade.toFixed(2)})`);
 
   assert(DURATION.moved === 0.32, '歩きの長さは 2D 版と同じ 0.32 秒');
+
+  /*
+   * 殴り方は種族で変える。全部同じだと、何に殴られたのか動きで分からない。
+   */
+  // コウモリは二度噛み。出る山が2つある
+  let peaks = 0;
+  let prev = 0;
+  let rising = false;
+  for (let i = 0; i <= 40; i++) {
+    const v = motionAt('lunge', i / 40, 1, 0, 'bite').dx;
+    if (v > prev && !rising) rising = true;
+    if (v < prev && rising) {
+      peaks++;
+      rising = false;
+    }
+    prev = v;
+  }
+  assert(peaks === 2, `コウモリは二度噛む (山 ${peaks} 個)`);
+
+  // スライムは潰れてから伸びる
+  const flat2 = motionAt('lunge', 0.3, 1, 0, 'squish');
+  assert(flat2.sy < 0.8 && flat2.sx > 1.2, `スライムは潰れる (${flat2.sx.toFixed(2)}x${flat2.sy.toFixed(2)})`);
+  assert(motionAt('lunge', 0.5, 1, 0, 'slam').sy === 1, '剣を振るときは潰れない');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
