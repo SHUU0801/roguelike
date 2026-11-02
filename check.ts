@@ -1229,6 +1229,21 @@ function putMonster(
   for (let i = 0; i < 20; i++) steps.add(motionAt('moved', i / 20, 1, 0).step);
   assert(steps.size === 2, `1歩のあいだに足が入れ替わる (${[...steps].join(',')})`);
 
+  /*
+   * **入れ替わるのは1回だけ。**
+   * 0.32 秒で4回入れ替えていたら、秒間12コマで足だけが震えて
+   * 歩きではなく痙攣に見えた。1マス＝1歩なのだから1回でいい。
+   */
+  let swaps = 0;
+  let last = motionAt('moved', 0, 1, 0).step;
+  // t=1 は「終わった」を返すので数に入れない
+  for (let i = 1; i < 40; i++) {
+    const now = motionAt('moved', i / 40, 1, 0).step;
+    if (now !== last) swaps++;
+    last = now;
+  }
+  assert(swaps === 1, `踏み替えは1マスに1回 (${swaps} 回)`);
+
   // 滑り込み。始まりは1マス後ろ、終わりは到着している
   const a = motionAt('moved', 0, 1, 0);
   assert(Math.abs(a.dx + 1) < 0.01, `出だしは1マス後ろ (${a.dx.toFixed(2)})`);

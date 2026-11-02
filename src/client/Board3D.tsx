@@ -204,6 +204,8 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     jobs: THREE.Texture;
     frames: Map<string, THREE.Texture>;
     blob: THREE.Texture;
+    /** 自キャラの板。カメラがこれを追う */
+    hero: THREE.Object3D | null;
     /** カメラが向かう先。毎フレーム近づける */
     look: THREE.Vector3;
     target: THREE.Vector3;
@@ -289,6 +291,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       jobs: loadSheet(JOB_SHEET.url),
       frames: new Map(),
       blob: makeBlob(),
+      hero: null,
       look: new THREE.Vector3(),
       target: new THREE.Vector3(),
     };
@@ -355,12 +358,6 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       const k = kit.current;
       if (!k) return;
 
-      // カメラを目標へ近づける。瞬間移動させると1歩ごとに画面が飛ぶ。
-      // 指数で寄せると、止まるときに自然に減速する
-      k.look.lerp(k.target, 0.18);
-      k.camera.position.copy(k.look).add(eye);
-      k.camera.lookAt(k.look);
-
       for (const o of k.things.children) {
         const a = o.userData.anim as Anim | undefined;
         const base = o.userData.base as THREE.Vector3 | undefined;
@@ -423,6 +420,25 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         }
       }
 
+      /*
+       * カメラは**自キャラの「いま描かれている位置」そのもの**を見る。
+       *
+       * 以前は目標（マスの座標）へ指数で寄せていた。
+       * そうすると、キャラは 0.32 秒の直線で滑り、カメラは別の曲線で寄る。
+       * **2つの違う動きの差が画面上の動きになる**ので、
+       * 歩くたびにキャラが画面の中で前後にずれ、ぎこちなく見えた。
+       *
+       * キャラの位置をそのまま見れば、キャラは画面の真ん中に貼り付き、
+       * 動くのは世界のほうになる。2D 版（CSS）もそうなっていた——
+       * 歩きとカメラ送りが同じ 0.32 秒・同じ linear だったので、
+       * たまたま一致していた。
+       */
+      if (k.hero) {
+        k.look.set(k.hero.position.x, 0, k.hero.position.z);
+        k.camera.position.copy(k.look).add(eye);
+        k.camera.lookAt(k.look);
+      }
+
       k.renderer.render(k.scene, k.camera);
     };
 
@@ -482,6 +498,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     };
     clear(k.ground);
     clear(k.things);
+    k.hero = null;
 
     const cx = me ? me.pos.x : Math.floor(floor.width / 2);
     const cy = me ? me.pos.y : Math.floor(floor.height / 2);
@@ -636,6 +653,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       const feet = h / 2 - 0.12;
       const shade = shadowFor(a.pos.x, a.pos.y, h * 0.8);
       const m = put(tex, h, a.pos.x, a.pos.y, feet);
+      if (a.id === myId) k.hero = m;
       if (walk) {
         // 歩き終わったら戻す位置も覚えておく。戻さないと踏み出した足のまま止まる
         m.userData.walk = {
@@ -678,8 +696,18 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
 
     // カメラと松明を自分へ
     k.target.set(cx, 0, cy);
-    // 1回目だけは寄せずに合わせる。遠くから流れてくると酔う
-    if (k.look.lengthSq() === 0) k.look.copy(k.target);
+    // 自キャラが見えないとき（倒れた直後など）はマスの座標を見る
+    if (!k.hero) {
+      k.look.copy(k.target);
+      k.camera.position.copy(k.look).add(
+        new THREE.Vector3(
+          Math.sin(CAM_YAW) * CAM_DIST,
+          Math.tan(CAM_TILT) * CAM_DIST,
+          Math.cos(CAM_YAW) * CAM_DIST,
+        ),
+      );
+      k.camera.lookAt(k.look);
+    }
     const fuel = me ? Math.max(0, Math.min(1, me.fuel / FUEL_START)) : 0;
     k.torch.position.set(cx, 1.5, cy);
     /*
