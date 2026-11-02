@@ -149,3 +149,54 @@ export function motionAt(
   }
   return m;
 }
+
+/* ── わざの演出 ────────────────────────────────────── */
+
+/**
+ * わざの見た目。2D 版（CSS の .fx-*）と同じ3種類に分ける。
+ *
+ *   slash … 斜めの筋が走る（斬る系）
+ *   burst … 中心から焼ける（飛び道具系）
+ *   ring  … 輪が広がる（支援系）
+ *
+ * わざ12種類ぶんの絵は作らない。**形3つ×色**で足りる。
+ * 大事なのは「何が起きたか」が1秒で分かることで、絵の種類数ではない。
+ */
+export type FxShape = 'slash' | 'burst' | 'ring';
+
+export type FxLook = { shape: FxShape; color: number; life: number };
+
+export const FX: Record<string, FxLook> = {
+  cleave: { shape: 'slash', color: 0xffffff, life: 0.34 },
+  backstab: { shape: 'slash', color: 0xffffff, life: 0.34 },
+  smite: { shape: 'slash', color: 0xffffff, life: 0.34 },
+  fireball: { shape: 'burst', color: 0xe8c84a, life: 0.38 },
+  bolt: { shape: 'burst', color: 0xe8c84a, life: 0.38 },
+  frost: { shape: 'burst', color: 0xc8f0ff, life: 0.42 },
+  venom: { shape: 'burst', color: 0xaa78e6, life: 0.42 },
+  vanish: { shape: 'burst', color: 0xc8ced6, life: 0.5 },
+  heal: { shape: 'ring', color: 0x79d19a, life: 0.5 },
+  bless: { shape: 'ring', color: 0x79d19a, life: 0.5 },
+  taunt: { shape: 'ring', color: 0xe0c060, life: 0.5 },
+  bulwark: { shape: 'ring', color: 0xe0c060, life: 0.5 },
+};
+
+/** わざの演出の、その瞬間の大きさと濃さ */
+export function fxAt(shape: FxShape, t: number): { scale: number; fade: number; spin: number } {
+  if (t >= 1) return { scale: 1, fade: 0, spin: 0 };
+  switch (shape) {
+    case 'slash':
+      // 小さく現れて、振り抜けながら消える
+      return {
+        scale: 0.6 + t * 0.7,
+        fade: t < 0.3 ? t / 0.3 : 1 - (t - 0.3) / 0.7,
+        spin: (-20 + t * 30) * (Math.PI / 180),
+      };
+    case 'ring':
+      // 輪が広がって薄れる
+      return { scale: 0.3 + t * 1.3, fade: 0.9 * (1 - t), spin: 0 };
+    default:
+      // 点いてすぐ消える
+      return { scale: 1, fade: t < 0.25 ? t / 0.25 : 1 - (t - 0.25) / 0.75, spin: 0 };
+  }
+}

@@ -7,7 +7,8 @@ import {
   startGame,
 } from './src/server/game';
 import { createFloor, spawnPos } from './src/server/dungeon';
-import { DURATION, motionAt } from './src/client/motion';
+import { DURATION, FX, fxAt, motionAt } from './src/client/motion';
+import { SKILL_IDS } from './src/shared/skills';
 import { dungeonOf } from './src/shared/dungeons';
 import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
 import { awardExp, takePerk } from './src/server/levels';
@@ -1311,6 +1312,25 @@ function putMonster(
   const flat2 = motionAt('lunge', 0.3, 1, 0, 'squish');
   assert(flat2.sy < 0.8 && flat2.sx > 1.2, `スライムは潰れる (${flat2.sx.toFixed(2)}x${flat2.sy.toFixed(2)})`);
   assert(motionAt('lunge', 0.5, 1, 0, 'slam').sy === 1, '剣を振るときは潰れない');
+}
+
+// --- 59. わざの演出が全部のわざに用意されている ---
+{
+  for (const id of SKILL_IDS) {
+    assert(FX[id] !== undefined, `${id} の見た目がある`);
+  }
+
+  // 斬る系は現れて消える。出しっぱなしにならない
+  const s0 = fxAt('slash', 0);
+  const sMid = fxAt('slash', 0.3);
+  const sEnd = fxAt('slash', 0.99);
+  assert(s0.fade < 0.1 && sMid.fade > 0.9 && sEnd.fade < 0.1, '斬撃は現れて消える');
+  assert(fxAt('slash', 1).fade === 0, '終わったら残らない');
+
+  // 輪は広がりながら薄れる
+  const r1 = fxAt('ring', 0.2);
+  const r2 = fxAt('ring', 0.8);
+  assert(r2.scale > r1.scale && r2.fade < r1.fade, '輪は広がって薄れる');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

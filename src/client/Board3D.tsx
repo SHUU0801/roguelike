@@ -22,7 +22,7 @@ import {
   type Dir,
   type GameState,
 } from '../shared/types';
-import { DURATION, motionAt, type MotionKind, type Swing } from './motion';
+import { DURATION, FX, fxAt, motionAt, type FxShape, type MotionKind, type Swing } from './motion';
 import type { TurnEffects } from './useTurnEffects';
 
 /**
@@ -107,6 +107,52 @@ function makeBlob(): THREE.Texture {
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, n, n);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/**
+ * わざの演出の絵。3つだけ、その場で描く。
+ *
+ *   slash … 斜めの白い筋
+ *   burst … 中心から外へ薄れる円
+ *   ring  … 輪っか
+ *
+ * わざ12種類ぶんの絵は作らない。形3つに色を掛ければ足りる。
+ * 色は materialで付けるので、絵は白黒でいい。
+ */
+function makeFx(shape: FxShape): THREE.Texture {
+  const n = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = n;
+  const g = cv.getContext('2d')!;
+
+  if (shape === 'slash') {
+    g.translate(n / 2, n / 2);
+    g.rotate(-0.73);
+    const grad = g.createLinearGradient(0, -n / 2, 0, n / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(0.46, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.54, 'rgba(255,255,255,1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(-n, -n / 2, n * 2, n);
+  } else if (shape === 'ring') {
+    g.strokeStyle = 'rgba(255,255,255,1)';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.arc(n / 2, n / 2, n / 2 - 4, 0, Math.PI * 2);
+    g.stroke();
+  } else {
+    const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.5)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, n, n);
+  }
+
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -206,6 +252,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     blob: THREE.Texture;
     /** 自キャラの板。カメラがこれを追う */
     hero: THREE.Object3D | null;
+    fx: Record<FxShape, THREE.Texture>;
     /** カメラが向かう先。毎フレーム近づける */
     look: THREE.Vector3;
     target: THREE.Vector3;
@@ -292,6 +339,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       frames: new Map(),
       blob: makeBlob(),
       hero: null,
+      fx: { slash: makeFx('slash'), burst: makeFx('burst'), ring: makeFx('ring') },
       look: new THREE.Vector3(),
       target: new THREE.Vector3(),
     };
@@ -359,9 +407,24 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       if (!k) return;
 
       for (const o of k.things.children) {
-        const a = o.userData.anim as Anim | undefined;
         const base = o.userData.base as THREE.Vector3 | undefined;
         if (!base) continue;
+
+        // わざの演出。板ではなく光なので、別扱いで進める
+        const fx = o.userData.fx as
+          | { shape: FxShape; life: number; start: number }
+          | undefined;
+        if (fx) {
+          const ft = (now - fx.start) / fx.life;
+          const g2 = fxAt(fx.shape, ft);
+          const fm = (o as THREE.Mesh).material as THREE.MeshBasicMaterial;
+          fm.opacity = Math.max(0, g2.fade);
+          o.scale.set(g2.scale, g2.scale, 1);
+          o.rotation.z = g2.spin;
+          continue;
+        }
+
+        const a = o.userData.anim as Anim | undefined;
         o.position.copy(base);
         if (o.userData.flat !== true) {
           o.rotation.z = 0;
@@ -677,6 +740,35 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         // 影も一緒に動かす。置いていかれると足から影が剥がれる
         shade.userData.anim = { ...anim };
         shade.userData.flat = true;
+      }
+    }
+
+    /*
+     * わざの演出。当たったマスの上に1枚立てる。
+     * 誰が撃ったかはサーバーに持たせていないので、
+     * 当たった相手（skillHits）の足元に出す。
+     */
+    const hit = turnEffects.skillHits;
+    if (hit) {
+      const look = FX[hit.skill];
+      if (look) {
+        for (const id of hit.ids) {
+          const who = state.actors.find((x) => x.id === id);
+          if (!who || !visibleAt(floor, who.pos.x, who.pos.y)) continue;
+          const mat = new THREE.MeshBasicMaterial({
+            map: k.fx[look.shape],
+            color: look.color,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          });
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), mat);
+          m.position.set(who.pos.x, 0.6, who.pos.y);
+          m.userData.base = m.position.clone();
+          m.userData.fx = { shape: look.shape, life: look.life, start: now };
+          face(m);
+          k.things.add(m);
+        }
       }
     }
 
