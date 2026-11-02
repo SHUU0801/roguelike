@@ -48,6 +48,8 @@ if (dbUrl) {
    */
   console.error('[server] DATABASE_URL が無い。公開モードでは起動しない');
   console.error('[server] アカウントが再起動のたびに消えるため');
+  console.error('[server] Render なら Blueprint を再同期すると');
+  console.error('[server]   render.yaml の roguelike-db が立って自動で入る');
   console.error('[server] 手元で試すだけなら ALLOW_MEMORY_STORE=1 を付ける');
   process.exit(1);
 } else {
