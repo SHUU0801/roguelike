@@ -2,19 +2,22 @@ import type { DungeonId } from '../shared/dungeons';
 import { ITEMS, type ItemId } from '../shared/items';
 import type { JobId } from '../shared/jobs';
 import { SKILLS, type SkillId } from '../shared/skills';
+import { noteLocalChange } from './carry';
 
 /**
  * 倉庫と記録。ブラウザに貯める。
  *
  * ## なぜブラウザなのか
  *
- * サーバーに保存先が無い（データベースを持っていない）。
- * アカウントも無いので、誰の持ち物かを識別する手段もない。
+ * もともとサーバーに保存先が無く、誰の持ち物かを識別する手段も無かった。
+ * いまはアカウント（account.ts）があり、入っていればここの中身が
+ * そのままサーバーへ上がる。**置き場所はブラウザのまま**にしてある。
+ * 入っていない人も同じように遊べて、場合分けがゲーム側に漏れない。
  *
- * **つまり自己申告で、その気になれば増やせる。**
- * 友達と遊ぶ範囲では困らないので今はこれでいく。
- * 知らない人と遊ぶ日が来たら、ここと GameRoom の 'loadout' を
- * サーバー側の保存に差し替える（07_ホームと周回.md §5）。
+ * **つまり中身は自己申告で、その気になれば増やせる。**
+ * アカウントは「どの端末からでも同じ記録」のためのもので、
+ * 不正を防ぐためのものではない。防ぐなら、ここと GameRoom の 'loadout' を
+ * サーバー側の持ち物に差し替える（07_ホームと周回.md §5）。
  *
  * ## 何を貯めるか
  *
@@ -54,6 +57,7 @@ function write(key: string, value: string[]): void {
   } catch {
     // 覚えられなくても遊べる
   }
+  noteLocalChange();
 }
 
 export function loadStash(): ItemId[] {
@@ -123,6 +127,7 @@ export function rememberSkills(job: JobId, skills: SkillId[]): void {
   const now = new Set([...(all[job] ?? []), ...skills]);
   try {
     localStorage.setItem(SKILLS_KEY, JSON.stringify({ ...all, [job]: [...now] }));
+    noteLocalChange();
   } catch {
     // 覚えられなくても遊べる
   }
@@ -141,6 +146,7 @@ export function tutorialDone(): boolean {
 export function markTutorialDone(): void {
   try {
     localStorage.setItem(TUTORIAL_KEY, '1');
+    noteLocalChange();
   } catch {
     // 覚えられなくても遊べる
   }

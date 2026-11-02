@@ -17,9 +17,11 @@
   },
   "dependencies": {
     "@colyseus/sdk": "^0.18.9",
+    "@types/pg": "^8.23.1",
     "@types/three": "^0.187.0",
     "colyseus": "^0.18.10",
     "express": "^5.3.0",
+    "pg": "^8.23.1",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

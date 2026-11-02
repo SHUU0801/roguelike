@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
+import { SignIn } from './SignIn';
+import { signOut, signedIn, whoAmI } from './account';
 import {
   exportCode,
   importCode,
@@ -18,9 +20,9 @@ type Props = {
 /**
  * ユーザーの画面。キャラ（職業）とは別の、遊ぶ人そのもの。
  *
- * **本物のアカウントではない**ことを隠さない。
- * サーバーに保存先が無いので、ブラウザのデータを消すと無くなる。
- * 代わりに引き継ぎコードを置いてある（profile.ts）。
+ * アカウントに入っていればサーバーに残る。入っていなければ
+ * **ブラウザのデータを消すと無くなる。** そこを隠さない。
+ * 引き継ぎコードは、パスワードを忘れたときの保険として残してある。
  *
  * 画面に出す説明は1行だけにする。長い話は「あそびかた」の仕事。
  */
@@ -30,6 +32,20 @@ export function ProfileSheet({ onClose, onRename }: Props) {
   const [code, setCode] = useState('');
   const [mode, setMode] = useState<'none' | 'out' | 'in'>('none');
   const [failed, setFailed] = useState(false);
+  const [signing, setSigning] = useState(false);
+  /** 入っている名前。合い言葉だけ残っていて切れている場合もあるので確かめる */
+  const [who, setWho] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!signedIn()) return;
+    let alive = true;
+    void whoAmI().then((w) => {
+      if (alive) setWho(w?.login ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const lv = userLevel(profile.exp);
 
@@ -85,7 +101,37 @@ export function ProfileSheet({ onClose, onRename }: Props) {
           </span>
         </div>
 
-        {/* 引き継ぎ。サーバーが無いので、別の端末へはこれでしか移せない */}
+        {/*
+          アカウント。入っていればどの端末からでも同じ記録になる。
+          入ったあとは画面を作り直す（location.reload）。
+          倉庫や覚えたわざは開いたときに読んでいるので、
+          書き戻しただけでは画面に出てこない。
+        */}
+        <div className="account-row">
+          {who ? (
+            <>
+              <span className="chip">
+                <Icon id="lock" size={16} />
+                {who}
+              </span>
+              <button
+                onClick={async () => {
+                  await signOut();
+                  setWho(null);
+                }}
+              >
+                出る
+              </button>
+            </>
+          ) : (
+            <button className="wide primary" onClick={() => setSigning(true)}>
+              <Icon id="lock" size={16} />
+              アカウントで記録を残す
+            </button>
+          )}
+        </div>
+
+        {/* 引き継ぎ。パスワードを忘れたときの保険 */}
         <div className="carry">
           <div className="carry-tabs">
             <button
@@ -141,6 +187,10 @@ export function ProfileSheet({ onClose, onRename }: Props) {
             </>
           )}
         </div>
+
+        {signing && (
+          <SignIn onClose={() => setSigning(false)} onSignedIn={() => location.reload()} />
+        )}
       </div>
     </div>
   );

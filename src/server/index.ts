@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'colyseus';
 import express from 'express';
 import { GameRoom } from './GameRoom';
+import { mountApi } from './api';
+import { memoryStore, postgresStore, type Store } from './store';
 
 /**
  * サーバーの起動。
@@ -24,8 +26,45 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = resolve(here, '../../dist');
 const hasBuild = existsSync(join(dist, 'index.html'));
 
+/*
+ * アカウントの保管庫。
+ *
+ * `DATABASE_URL` があれば Postgres、無ければその場限りの記憶。
+ * **本番で記憶のほうに落ちたら起動を止める。** 黙って動くと、
+ * 再起動のたびに全員のアカウントが消えるのに誰も気づかない。
+ */
+const dbUrl = process.env.DATABASE_URL;
+let store: Store;
+if (dbUrl) {
+  store = await postgresStore(dbUrl);
+} else if (hasBuild && process.env.ALLOW_MEMORY_STORE !== '1') {
+  /*
+   * dist/ があるのに保管先が無い＝公開モードで記憶に落ちかけている。
+   * **黙って動かさない。** 再起動のたびに全員のアカウントが消えるのに、
+   * 誰も気づかないまま運用されるのが一番まずい。
+   *
+   * 手元で `npm run preview` を試したいときは ALLOW_MEMORY_STORE=1 を付ける。
+   * 付けるのは手元だけ。公開先に置いてはいけない。
+   */
+  console.error('[server] DATABASE_URL が無い。公開モードでは起動しない');
+  console.error('[server] アカウントが再起動のたびに消えるため');
+  console.error('[server] 手元で試すだけなら ALLOW_MEMORY_STORE=1 を付ける');
+  process.exit(1);
+} else {
+  if (hasBuild) {
+    console.warn('[server] ⚠ 記憶だけで動いている。再起動でアカウントは消える');
+  } else {
+    console.log('[server] DATABASE_URL が無いので、その場限りの記憶を使う（開発モード）');
+  }
+  store = memoryStore();
+}
+await store.ready();
+
 const gameServer = new Server({
   express: (app) => {
+    // アカウントの口は、画面の配信より先に登録する（後だと index.html に奪われる）
+    mountApi(app, store);
+
     if (!hasBuild) return;
 
     app.use(express.static(dist));

@@ -21,6 +21,8 @@
  * 「今日は遺跡だけ回して終わり」でも何か残るようにするため。
  */
 
+import { applyDump, localDump, noteLocalChange } from './carry';
+
 const KEY = 'roguelike:profile';
 
 export type Profile = {
@@ -62,6 +64,8 @@ export function saveProfile(p: Profile): void {
   } catch {
     // 保存できなくても遊べる
   }
+  // ログインしていればサーバーにも上がる（account.ts）
+  noteLocalChange();
 }
 
 export function setName(name: string): void {
@@ -107,43 +111,23 @@ export function userLevel(exp: number): { level: number; into: number; need: num
  * 引き継ぎコード。
  *
  * 倉庫・踏破・覚えたわざ・ユーザーデータをまとめて1つの文字列にする。
- * サーバーを持たずに別の端末へ移す唯一の手段。
+ * 運ぶ鍵の一覧は carry.ts にある（アカウントと共通）。
+ *
+ * アカウント（account.ts）ができたので唯一の手段ではなくなったが、
+ * **パスワードを忘れたときの保険**として残す。
  * 中身はただの JSON なので、書き換えれば何でも持てる——
  * ここは §「本物のアカウントではない」のとおり。
  */
-const CARRY_KEYS = [
-  'roguelike:profile',
-  'roguelike:stash',
-  'roguelike:cleared',
-  'roguelike:skills',
-] as const;
-
 export function exportCode(): string {
-  const dump: Record<string, string> = {};
-  for (const key of CARRY_KEYS) {
-    const v = localStorage.getItem(key);
-    if (v !== null) dump[key] = v;
-  }
   // 日本語は入らない（中身は id と数字だけ）ので btoa で足りる
-  return btoa(unescape(encodeURIComponent(JSON.stringify(dump))));
+  return btoa(unescape(encodeURIComponent(JSON.stringify(localDump()))));
 }
 
 /** 引き継ぎコードを読む。読めなければ false */
 export function importCode(code: string): boolean {
   try {
     const json: unknown = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
-    if (typeof json !== 'object' || json === null) return false;
-
-    const dump = json as Record<string, unknown>;
-    // 知っている鍵だけ書き戻す。知らない鍵は無視する
-    let wrote = 0;
-    for (const key of CARRY_KEYS) {
-      const v = dump[key];
-      if (typeof v !== 'string') continue;
-      localStorage.setItem(key, v);
-      wrote++;
-    }
-    return wrote > 0;
+    return applyDump(json) > 0;
   } catch {
     return false;
   }

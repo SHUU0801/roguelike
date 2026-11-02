@@ -13,5 +13,26 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # アカウントの保管先。下の databases から自動で入る。
+      # これが無いと公開モードでは起動しない（index.ts で止めている）
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roguelike-db
+          property: connectionString
     # 無料枠は使われないと休止する。起こすのに30秒ほどかかる
     healthCheckPath: /
+
+# アカウントの保管先。
+#
+# Render の無料枠は**ディスクが揮発する**ので、SQLite をファイルで置いても
+# 再起動のたびに消える。外の Postgres に置くしかない。
+# ここに書いておけば Render が一緒に立てて、DATABASE_URL を注いでくれる。
+#
+# **無料の Postgres は一定期間で消える。** 消えたらアカウントも全部消える。
+# 長く続けるなら有料にするか、Neon などへ移すこと。
+# 移すのは DATABASE_URL の差し替えだけで済むようにしてある。
+databases:
+  - name: roguelike-db
+    plan: free
+    databaseName: roguelike
+    user: roguelike

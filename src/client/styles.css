@@ -2597,3 +2597,62 @@ button.wide.danger {
   overflow: hidden;
   touch-action: none;
 }
+
+/* --- アカウント（入る・つくる） --- */
+
+/*
+ * 「じぶん」の説明文。ここまで .hint に当たる決まりが無く、
+ * 既定の <p>（大きい余白・明るい文字）で出ていた。
+ * 説明は添え物なので、小さく薄くする。
+ */
+.profile-sheet .hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7b8694;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: #1b2029;
+  border: 1px solid #2a2e35;
+  border-radius: 8px;
+}
+
+/* 入っている名前は押せない表示。横に「出る」だけ置く */
+.account-row .chip { font-weight: 700; }
+.account-row > button:not(.wide) { margin-left: auto; }
+
+.account-row button.wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sign-form { display: flex; flex-direction: column; gap: 8px; }
+
+/*
+ * 記録がぶつかったときの選択。
+ * **中身を一言添える。** 「アカウント」「この端末」だけでは選べない。
+ */
+.side-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 11px 12px;
+  font-family: inherit;
+  text-align: left;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 8px;
+}
+
+.side-pick b { font-size: 14px; }
+.side-pick span { font-size: 11px; color: #9aa3ad; }
+.side-pick:disabled { opacity: 0.5; }

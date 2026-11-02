@@ -8,6 +8,19 @@ import {
 } from './src/server/game';
 import { createFloor, spawnPos } from './src/server/dungeon';
 import { DURATION, FX, fxAt, motionAt } from './src/client/motion';
+import {
+  digestToken,
+  hashPassword,
+  isValidLoginName,
+  lockoutMs,
+  newSessionToken,
+  passwordProblem,
+  verifyPassword,
+} from './src/server/auth';
+import { makeAccounts } from './src/server/accounts';
+import { memoryStore } from './src/server/store';
+import { CARRY_KEYS, applyDump, isEmptyDump, localDump } from './src/client/carry';
+import { describeDump } from './src/client/account';
 import { SKILL_IDS } from './src/shared/skills';
 import { dungeonOf } from './src/shared/dungeons';
 import { putIn, rearrange as rearrangeItem, usedCells } from './src/server/backpack';
@@ -1338,6 +1351,216 @@ function putMonster(
   const r1 = fxAt('ring', 0.2);
   const r2 = fxAt('ring', 0.8);
   assert(r2.scale > r1.scale && r2.fade < r1.fade, '輪は広がって薄れる');
+}
+
+// --- 60. パスワードの保管と検証 ---
+/*
+ * ここは思いつきで書いてはいけないところなので、試験も厚くしてある。
+ * 暗号そのものは Node 標準の scrypt。自作しているのは
+ * パラメータの選び方と、比較の仕方だけ。
+ */
+{
+  const h = await hashPassword('correct horse battery');
+  assert(!h.includes('correct'), '保管値に生のパスワードが入っていない');
+  assert(h.startsWith('scrypt$16384$8$1$'), `形式が自己記述 (${h.slice(0, 18)})`);
+
+  assert(await verifyPassword('correct horse battery', h), '正しいパスワードは通る');
+  assert(!(await verifyPassword('correct horse batter', h)), '1文字違うと通らない');
+  assert(!(await verifyPassword('', h)), '空は通らない');
+
+  // 塩。これが無いと、1つ破られたら同じパスワードの人が全員破られる
+  const h2 = await hashPassword('correct horse battery');
+  assert(h !== h2, '同じパスワードでも保管値が違う（塩が効いている）');
+  assert(await verifyPassword('correct horse battery', h2), 'もう一方の保管値でも通る');
+
+  // 壊れた保管値で落ちたり、巨大な計算をさせられたりしない
+  for (const bad of [
+    '',
+    'x',
+    'scrypt$a$b$c$d$e',
+    'scrypt$16384$8$1$$',
+    'bcrypt$1$2$3$4$5',
+    'scrypt$99999999$8$1$AAAA$AAAA',
+  ]) {
+    assert((await verifyPassword('x', bad)) === false, `壊れた保管値を拒む (${bad.slice(0, 16) || '空'})`);
+  }
+
+  // 見た目が同じものは同じ扱いにする（全角と半角で入れ直せなくなるのを防ぐ）
+  const hk = await hashPassword('ｐassword123');
+  assert(await verifyPassword('ｐassword123', hk), '全角を含むパスワードも一致する');
+}
+
+// --- 61. 名前とパスワードの決まり ---
+{
+  assert(isValidLoginName('shuri_01'), '英数と記号の名前は通る');
+  assert(!isValidLoginName('ab'), '短すぎる名前は弾く');
+  assert(!isValidLoginName('しゅり'), '日本語の名前は弾く（表示名とは別）');
+  assert(!isValidLoginName('a b'), '空白入りは弾く');
+
+  assert(passwordProblem('short') !== null, '短いパスワードは理由つきで弾く');
+  assert(passwordProblem('a'.repeat(500)) !== null, '長すぎるパスワードも弾く');
+  assert(passwordProblem('longenough1') === null, '足りていれば通す');
+}
+
+// --- 62. 合い言葉と総当たり対策 ---
+{
+  const t1 = newSessionToken();
+  const t2 = newSessionToken();
+  assert(t1.token !== t2.token, '合い言葉は毎回違う');
+  assert(t1.token.length >= 40, `合い言葉が十分長い (${t1.token.length} 文字)`);
+  /*
+   * 生のまま保管しない。保管庫が漏れたとき、生の合い言葉が入っていると
+   * そのまま全員になりすませる。
+   */
+  assert(!t1.digest.includes(t1.token), '保管するのは要約で、生の値ではない');
+  assert(digestToken(t1.token) === t1.digest, '同じ合い言葉からは同じ要約');
+
+  assert(lockoutMs(0) === 0 && lockoutMs(2) === 0, '2回までは待たされない');
+  assert(lockoutMs(3) > 0, '3回外すと待たされる');
+  assert(lockoutMs(10) > lockoutMs(5), '外すほど待ち時間が伸びる');
+  /*
+   * 完全に締め出さない。締め出せると、他人がわざと外して
+   * 本人を閉め出す嫌がらせができてしまう。
+   */
+  assert(lockoutMs(100) <= 15 * 60 * 1000, '待ち時間に上限がある（締め出されない）');
+}
+
+// --- 63. 登録とログイン ---
+{
+  const acc = makeAccounts(memoryStore());
+
+  const made = await acc.register('shuri_01', 'longenough1', '{"lv":1}');
+  assert(made.ok, '登録できる');
+  if (!made.ok) throw new Error('登録に失敗');
+
+  const again = await acc.register('SHURI_01', 'another12345', '');
+  assert(!again.ok, '同じ名前は大文字小文字を変えても取れない');
+
+  const inOk = await acc.login('shuri_01', 'longenough1');
+  assert(inOk.ok, 'ログインできる');
+  assert(inOk.ok && inOk.save === '{"lv":1}', '登録時の持ち物が戻ってくる');
+
+  /*
+   * **「その名前は無い」と「パスワードが違う」を区別しない。**
+   * 区別すると、名前を総当たりして誰が登録しているか調べられる。
+   */
+  const wrongPw = await acc.login('shuri_01', 'wrongpassword');
+  const noName = await acc.login('nobody_here', 'wrongpassword');
+  assert(!wrongPw.ok && !noName.ok, 'どちらも失敗する');
+  assert(
+    !wrongPw.ok && !noName.ok && wrongPw.message === noName.message,
+    `同じ文言で返す（${!wrongPw.ok ? wrongPw.message : ''}）`,
+  );
+
+  // 合い言葉で持ち主を引ける
+  const who = await acc.whoIs(inOk.ok ? inOk.token : '');
+  assert(who?.login === 'shuri_01', '合い言葉から持ち主が分かる');
+  assert((await acc.whoIs('でたらめ')) === null, 'でたらめな合い言葉は通らない');
+  assert((await acc.whoIs('')) === null, '空の合い言葉は通らない');
+}
+
+// --- 64. 保存とパスワード変更 ---
+{
+  const acc = makeAccounts(memoryStore());
+  const made = await acc.register('tester', 'longenough1', '');
+  if (!made.ok) throw new Error('登録に失敗');
+  const token = made.token;
+
+  assert(await acc.save(token, '{"lv":9}'), '持ち物を保存できる');
+  const back = await acc.whoIs(token);
+  assert(back?.save === '{"lv":9}', '保存した持ち物が戻る');
+  assert(!(await acc.save('でたらめ', 'x')), 'でたらめな合い言葉では保存できない');
+
+  // いまのパスワードを知らないと変えられない
+  const nope = await acc.changePassword(token, 'wrongone123', 'newpassword1');
+  assert(!nope.ok, 'いまのパスワードが違うと変えられない');
+
+  const done = await acc.changePassword(token, 'longenough1', 'newpassword1');
+  assert(done.ok, 'パスワードを変えられる');
+
+  /*
+   * **変えたら古い合い言葉は全部切る。**
+   * 変える理由はたいてい「誰かに知られた」なので、
+   * 古い合い言葉が生きていては意味がない。
+   */
+  assert((await acc.whoIs(token)) === null, '古い合い言葉は切れる');
+  assert(done.ok && (await acc.whoIs(done.token))?.login === 'tester', '新しい合い言葉は効く');
+
+  assert((await acc.login('tester', 'longenough1')).ok === false, '古いパスワードでは入れない');
+  assert((await acc.login('tester', 'newpassword1')).ok === true, '新しいパスワードで入れる');
+}
+
+// --- 65. 続けて間違えると待たされる ---
+{
+  const acc = makeAccounts(memoryStore());
+  await acc.register('locked', 'longenough1', '');
+  for (let i = 0; i < 4; i++) await acc.login('locked', 'badguess1234');
+
+  const after = await acc.login('locked', 'longenough1');
+  assert(
+    !after.ok && after.message.includes('待つ'),
+    `正しくても待たされる (${!after.ok ? after.message : ''})`,
+  );
+}
+
+// --- 66. 記録の持ち運び（carry.ts） ---
+{
+  /*
+   * carry.ts はブラウザの localStorage を触る。
+   * node には無いので、同じ形の偽物を置いて試す。
+   * **置き場所が違うだけで、運ぶ判断は同じ**なので、これで意味がある。
+   */
+  const bag = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => bag.get(k) ?? null,
+    setItem: (k: string, v: string) => void bag.set(k, v),
+    removeItem: (k: string) => void bag.delete(k),
+  };
+
+  assert(isEmptyDump(localDump()), '何も無ければ空');
+
+  bag.set('roguelike:stash', '["sword"]');
+  bag.set('roguelike:tutorial-done', '1');
+  // 運ばない鍵。合い言葉を一緒に運ぶと、記録を渡した相手が本人になれる
+  bag.set('roguelike:token', 'ひみつ');
+
+  const dump = localDump();
+  assert(!isEmptyDump(dump), '記録があれば空ではない');
+  assert(dump['roguelike:stash'] === '["sword"]', '倉庫を運ぶ');
+  assert(dump['roguelike:tutorial-done'] === '1', 'チュートリアル済みも運ぶ');
+  assert(!('roguelike:token' in dump), '合い言葉は運ばない');
+  assert(
+    !(CARRY_KEYS as readonly string[]).includes('roguelike:token'),
+    '運ぶ鍵に合い言葉を入れていない',
+  );
+
+  // 書き戻すのは知っている鍵だけ。知らない鍵を書くと身に覚えのない値が残る
+  bag.clear();
+  const wrote = applyDump({ 'roguelike:stash': '["shield"]', 'roguelike:evil': 'x', bad: 1 });
+  assert(wrote === 1, '知っている鍵だけ書き戻す');
+  assert(bag.get('roguelike:stash') === '["shield"]', '書き戻せている');
+  assert(!bag.has('roguelike:evil'), '知らない鍵は書かない');
+
+  assert(applyDump('ただの文字') === 0, '壊れた記録で落ちない');
+  assert(applyDump(null) === 0, '空でも落ちない');
+}
+
+// --- 67. ぶつかった記録の見分け ---
+{
+  /*
+   * 「アカウントの記録」と言われても選べない。
+   * **何回潜ったか・何階まで・倉庫に何個**が出れば選べる。
+   */
+  const said = describeDump({
+    'roguelike:profile': JSON.stringify({ name: 'しゅり', runs: 12, deepest: 7 }),
+    'roguelike:stash': '["a","b","c"]',
+  });
+  assert(said.startsWith('しゅり'), 'まず名前が出る');
+  assert(said.includes('12回'), 'もぐった回数が出る');
+  assert(said.includes('B7F'), '一番深い階が出る');
+  assert(said.includes('3個'), '倉庫の数が出る');
+  assert(describeDump({}) === '記録あり', '中身が無くても何か言う');
+  assert(describeDump({ 'roguelike:profile': '壊れている' }).length > 0, '壊れた記録でも落ちない');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
