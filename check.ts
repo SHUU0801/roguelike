@@ -1209,12 +1209,11 @@ function putMonster(
   }
 
   /*
-   * 上下では向きを変えない。
-   * 変えると北へ1歩あるくだけで絵が既定の右向きに戻る。
+   * 上下も覚える。前・後ろ・横の絵が揃っているので、
+   * 北を向いたら後ろ姿を出せる。
    */
-  const before = me.facing;
   turn(state, { type: 'move', dir: 'n' });
-  assert(me.facing === before, `上下では向きが変わらない (${before} → ${me.facing})`);
+  assert(me.facing === 'n', `上へ歩くと北を向く (${me.facing})`);
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

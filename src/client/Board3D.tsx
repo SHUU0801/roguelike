@@ -89,6 +89,29 @@ type Anim = {
   start: number;
 };
 
+/**
+ * 足元の影の絵。中心が濃く、外へ向かって消える円。
+ *
+ * ただの円を敷いたら、縁がくっきり出て「黒い紙を置いた」ように見えた。
+ * にじませると地面に馴染む。絵の数を増やしたくないので、
+ * 画像ファイルではなく**その場で描いて**1枚だけ作る。
+ */
+function makeBlob(): THREE.Texture {
+  const n = 64;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = n;
+  const g = cv.getContext('2d')!;
+  const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  grad.addColorStop(0, 'rgba(0,0,0,0.85)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.45)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, n, n);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function loadSheet(url: string): THREE.Texture {
   const tex = new THREE.TextureLoader().load(url);
   tex.magFilter = THREE.NearestFilter;
@@ -111,6 +134,34 @@ function frameOf(sheet: THREE.Texture, cols: number, rows: number, col: number, 
   return t;
 }
 
+
+/**
+ * 向きから、どの絵をどちら向きで出すか決める。
+ *
+ * カメラは南東から見下ろしている。だから盤の方角は画面でこう見える:
+ *
+ *   北へ進む → カメラから遠ざかる → **後ろ姿**
+ *   南へ進む → カメラへ近づく     → **正面**
+ *   東へ進む → 画面の右奥へ       → 横向き（そのまま）
+ *   西へ進む → 画面の左手前へ     → 横向き（反転）
+ *
+ * もらった絵に前・後ろ・横が揃っているので、板1枚でも向きが出る。
+ * 絵が無い向きを無理に作らない——足りないぶんは一番近い絵で済ませる。
+ */
+function poseFor(facing: Dir, attacking: boolean): { pose: number; flip: boolean } {
+  if (attacking) return { pose: POSE.attack, flip: facing === 'w' };
+  switch (facing) {
+    case 'n':
+      return { pose: POSE.back, flip: false };
+    case 's':
+      return { pose: POSE.idle, flip: false };
+    case 'w':
+      return { pose: POSE.dash, flip: true };
+    default:
+      return { pose: POSE.dash, flip: false };
+  }
+}
+
 export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Props) {
   const host = useRef<HTMLDivElement | null>(null);
 
@@ -124,6 +175,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     tiles: THREE.Texture;
     jobs: THREE.Texture;
     frames: Map<string, THREE.Texture>;
+    blob: THREE.Texture;
     /** カメラが向かう先。毎フレーム近づける */
     look: THREE.Vector3;
     target: THREE.Vector3;
@@ -140,6 +192,15 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
 
     const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    /*
+     * 影を落とす。**これがキャラを「立体に見せる」一番の要素。**
+     *
+     * 参考にした絵のキャラも板（2Dのドット絵）だが、
+     * 足元に影があって、同じ光で照らされているから世界に馴染んで見える。
+     * 板を多角形にしても、影が無ければ貼り紙のままになる。
+     */
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     el.appendChild(renderer.domElement);
     renderer.domElement.style.cssText = 'width:100%;height:100%;display:block';
 
@@ -154,6 +215,9 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     scene.add(camera);
 
     const torch = new THREE.PointLight(0xffd9a0, 9, 11, 1.1);
+    torch.castShadow = true;
+    torch.shadow.mapSize.set(1024, 1024);
+    torch.shadow.bias = -0.005;
     scene.add(torch);
 
     // 形が分かる最低限だけ。明るさは松明に持たせる
@@ -176,6 +240,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       tiles: loadSheet(SHEET.url),
       jobs: loadSheet(JOB_SHEET.url),
       frames: new Map(),
+      blob: makeBlob(),
       look: new THREE.Vector3(),
       target: new THREE.Vector3(),
     };
@@ -234,11 +299,18 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         const base = o.userData.base as THREE.Vector3 | undefined;
         if (!base) continue;
         o.position.copy(base);
-        o.rotation.z = 0;
+        if (o.userData.flat !== true) o.rotation.z = 0;
+        /*
+         * 影は MeshBasicMaterial で emissive を持たない。
+         * 区別せずに触ると落ちるので、持っているものだけ触る。
+         */
         const mat = (o as THREE.Mesh).material as THREE.MeshLambertMaterial;
+        const glow = (v: number) => mat.emissive?.setScalar(v);
+        const flat = o.userData.flat === true;
+        const solid = flat ? 0.55 : 1;
         if (!a) {
-          mat.opacity = 1;
-          mat.emissive.setScalar(0);
+          mat.opacity = solid;
+          glow(0);
           continue;
         }
 
@@ -250,8 +322,8 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         const t = (now - a.start) / dur;
         if (t >= 1) {
           delete o.userData.anim;
-          mat.opacity = 1;
-          mat.emissive.setScalar(0);
+          mat.opacity = solid;
+          glow(0);
           continue;
         }
 
@@ -267,12 +339,12 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           o.position.z += a.dy * out;
         } else if (a.kind === 'hit') {
           o.position.x += Math.sin(t * Math.PI * 6) * 0.12;
-          mat.emissive.setScalar(Math.max(0, 0.9 - t * 3)); // 一瞬白く飛ばす
+          glow(Math.max(0, 0.9 - t * 3)); // 一瞬白く飛ばす
         } else {
           // 回って沈んで消える
           o.position.y -= t * 0.5;
-          o.rotation.z = t * 1.2;
-          mat.opacity = 1 - t;
+          if (!flat) o.rotation.z = t * 1.2;
+          mat.opacity = solid * (1 - t);
         }
       }
 
@@ -343,6 +415,8 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
           if (!visible) mat.color.setScalar(0.45);
           const box = new THREE.Mesh(new THREE.BoxGeometry(1, WALL_H, 1), mat);
           box.position.set(x, WALL_H / 2, y);
+          box.castShadow = true;
+          box.receiveShadow = true;
           k.ground.add(box);
           continue;
         }
@@ -356,6 +430,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
         const cell = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
         cell.rotation.x = -Math.PI / 2;
         cell.position.set(x, 0, y);
+        cell.receiveShadow = true;
         cell.userData = { x, y };
         k.ground.add(cell);
       }
@@ -363,6 +438,30 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
 
     /** 画面に正対させる。カメラは固定なので向きを写すだけでいい */
     const face = (m: THREE.Object3D) => m.rotation.set(-CAM_TILT, CAM_YAW, 0, 'YXZ');
+
+    /**
+     * 足元の影。
+     *
+     * **板を地面に馴染ませる一番安い手。**
+     * 落ち影（castShadow）だけだと、光の角度によっては影が伸びすぎたり
+     * 消えたりして、浮いて見える瞬間が出る。
+     * 真下に薄い楕円を敷いておくと、どの角度でも接地して見える。
+     */
+    const shadowFor = (x: number, y: number, size: number) => {
+      const mat = new THREE.MeshBasicMaterial({
+        map: k.blob,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size * 0.62), mat);
+      m.rotation.x = -Math.PI / 2;
+      // 床と同じ高さだと z ファイティングで散らつく。わずかに浮かせる
+      m.position.set(x, 0.012, y);
+      m.userData.base = m.position.clone();
+      k.things.add(m);
+      return m;
+    };
 
     const put = (tex: THREE.Texture, size: number, x: number, y: number, lift: number) => {
       const mat = new THREE.MeshLambertMaterial({
@@ -372,6 +471,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       });
       const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
       m.position.set(x, lift, y);
+      m.castShadow = true;
       m.userData.base = m.position.clone();
       face(m);
       k.things.add(m);
@@ -380,6 +480,7 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
 
     for (const item of state.items) {
       if (!item.pos || !visibleAt(floor, item.pos.x, item.pos.y)) continue;
+      shadowFor(item.pos.x, item.pos.y, 0.75);
       put(tileTex(itemDefOf(item.itemId).sprite), 0.8, item.pos.x, item.pos.y, 0.4);
     }
 
@@ -390,16 +491,15 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
       let tex: THREE.Texture;
       if (a.kind === 'player') {
         const row = PORTRAIT_ROW[a.job ?? 'warrior'];
-        const pose = !a.alive
-          ? POSE.down
-          : turnEffects.effects.get(a.id)?.kind === 'lunge'
-            ? POSE.attack
-            : POSE.dash;
+        const attacking = turnEffects.effects.get(a.id)?.kind === 'lunge';
+        const look = a.alive
+          ? poseFor(a.facing, attacking)
+          : { pose: POSE.down, flip: a.facing === 'w' };
         tex = frame(
           k.jobs,
           JOB_SHEET.cols,
           JOB_SHEET.rows,
-          pose + (a.facing === 'w' ? FLIP_OFFSET : 0),
+          look.pose + (look.flip ? FLIP_OFFSET : 0),
           row,
         );
       } else {
@@ -412,10 +512,27 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
        * 足元をマスに合わせたまま上へ伸ばす。
        */
       const h = a.kind === 'player' ? 1.7 : 1.2;
-      const m = put(tex, h, a.pos.x, a.pos.y, h / 2 - 0.1);
+      /*
+       * 足が地面に着くように置く。
+       * 板の中心は h/2 の高さだが、絵の下には余白があるので少し沈める。
+       */
+      const feet = h / 2 - 0.12;
+      const shade = shadowFor(a.pos.x, a.pos.y, h * 0.8);
+      const m = put(tex, h, a.pos.x, a.pos.y, feet);
 
       const fx = turnEffects.effects.get(a.id);
-      if (fx) m.userData.anim = { kind: fx.kind, dx: 'dx' in fx ? fx.dx : 0, dy: 'dy' in fx ? fx.dy : 0, start: now } satisfies Anim;
+      if (fx) {
+        const anim = {
+          kind: fx.kind,
+          dx: 'dx' in fx ? fx.dx : 0,
+          dy: 'dy' in fx ? fx.dy : 0,
+          start: now,
+        } satisfies Anim;
+        m.userData.anim = anim;
+        // 影も一緒に動かす。置いていかれると足から影が剥がれる
+        shade.userData.anim = { ...anim };
+        shade.userData.flat = true;
+      }
     }
 
     // 消えたものの残像。消えるあいだだけ出す

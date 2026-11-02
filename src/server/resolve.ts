@@ -135,16 +135,19 @@ function applyPlayerIntent(state: GameState, actorId: string, intent: Intent): v
 
     case 'move': {
       /*
-       * 向きを覚える。
+       * 向きを覚える。**4方向とも。**
        *
-       * **横に動いたときだけ。** 上下でも更新すると、北へ1歩あるくだけで
-       * 絵が既定の右向きに戻ってしまう。横移動の向きを保つのが
-       * 2Dのゲームの普通の作り。
+       * 以前は横（e/w）だけにしていた。平面の盤では正面向きの絵を
+       * 左右に反転するだけだったので、上下で更新すると既定の向きに
+       * 戻ってしまったから。
+       *
+       * いまは前・後ろ・横の絵が揃っている（もらった絵の 1/3/5 枚目）ので、
+       * 北を向いたら後ろ姿、南を向いたら正面を出せる。4方向とも覚える。
        *
        * モンスターの facing は視界の向き（ai.ts）だが、
        * プレイヤーのそれは絵の向きにしか使っていない。
        */
-      if (intent.dir === 'e' || intent.dir === 'w') actor.facing = intent.dir;
+      actor.facing = intent.dir;
 
       const delta = DIR_DELTA[intent.dir];
       const nx = actor.pos.x + delta.x;
