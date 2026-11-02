@@ -61,10 +61,13 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   /*
-   * 盤の描き方。?v=3d で three.js 版に切り替える。
-   * 2D と見比べて決めるための仮の分岐。決めたらこの旗ごと消す。
+   * 盤の描き方。既定は 3D（three.js）。
+   *
+   * `?v=2d` を付けると、以前の CSS Grid 版に戻る。
+   * 3D 版にはまだ無い動き（わざの演出、種族ごとの攻撃モーションなど）が
+   * あるので、見比べる手段を残してある。移し終えたらこの旗ごと消す。
    */
-  const board3d = new URLSearchParams(window.location.search).get('v') === '3d';
+  const board3d = new URLSearchParams(window.location.search).get('v') !== '2d';
   /** 「あとで」で閉じたレベルアップ画面。溜まった回数が増えたらまた出す */
   const [perkSnoozed, setPerkSnoozed] = useState(0);
   /** ホームで持ち込んだもの。決着したときに倉庫から引くのに使う */
@@ -495,10 +498,7 @@ export function App() {
         </div>
       )}
 
-      {/*
-        盤の描き方を URL で選べるようにしてある（?v=3d）。
-        見比べながら決めるため。片方に決めたら、この分岐ごと消す。
-      */}
+      {/* 盤の描き方。既定は 3D。?v=2d で以前の CSS Grid 版 */}
       {board3d ? (
         <Board3D
           state={state}
