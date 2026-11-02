@@ -1288,7 +1288,14 @@ function putMonster(
   const d = motionAt('die', 0.8, 0, 0);
   assert(d.fade < 0.3 && d.dy < 0, `消えぎわは沈んで薄い (${d.fade.toFixed(2)})`);
 
-  assert(DURATION.moved === 0.32, '歩きの長さは 2D 版と同じ 0.32 秒');
+  /*
+   * 速さ。3D にしたら 2D 版と同じ長さでは速すぎた（実機で確認）。
+   * マスが大きくなり、奥行き方向にも動くぶん、追う目の仕事が増えている。
+   * ここを縮めると、また「速すぎる」に戻る。
+   */
+  assert(DURATION.moved > 0.4, `歩きはゆっくり (${DURATION.moved} 秒)`);
+  assert(DURATION.lunge < DURATION.moved, '殴りは歩きより短い（鋭く見せる）');
+  assert(DURATION.die > DURATION.hit, '消えるのは一番ゆっくり');
 
   /*
    * 殴り方は種族で変える。全部同じだと、何に殴られたのか動きで分からない。

@@ -13,6 +13,7 @@ import { MiniMap } from './MiniMap';
 import { PartyBar } from './PartyBar';
 import { dirBetween, findPath, shouldStop } from './travel';
 import { goToDungeon, useGame } from './useGame';
+import { DURATION } from './motion';
 import { recordRun, loadProfile } from './profile';
 import { bringHome, markCleared, markTutorialDone, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
@@ -33,10 +34,13 @@ import {
 } from '../shared/types';
 
 /**
- * 自動で歩くときの1歩の間隔。歩きのアニメ（0.32秒）より少し短く。
+ * 自動で歩くときの1歩の間隔。歩きのアニメより少し短く。
  * 同じにすると間延びし、短すぎると瞬間移動に見える。
+ *
+ * アニメを 0.7 倍の速さに落としたので、ここも合わせて伸ばす。
+ * 置いていくと、歩き終わる前に次の1歩が始まって足が流れる。
  */
-const STEP_MS = 220;
+const STEP_MS = Math.round(DURATION.moved * 1000 * 0.7);
 
 /** 締め切りまでの残り秒。待っていないときは null */
 function useSecondsLeft(deadlineAt: number | null): number | null {

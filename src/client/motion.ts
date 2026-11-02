@@ -25,12 +25,20 @@ export type MotionKind = 'moved' | 'lunge' | 'hit' | 'die';
  */
 export type Swing = 'slam' | 'bite' | 'squish';
 
-/** それぞれの動きの長さ（秒）。2D 版（CSS）と揃えてある */
+/**
+ * それぞれの動きの長さ（秒）。
+ *
+ * もとは 2D 版（CSS）と同じ 0.32 / 0.3 / 0.36 / 0.45 だった。
+ * **3D にしたら速すぎた。** 盤を寝かせてマスが大きくなったぶん、
+ * 同じ時間だと見かけの速度が上がる。それに等角では
+ * 奥行き方向にも動くので、追う目の仕事が増えている。
+ * 実機で見てもらって 0.7 倍（＝長さ 1.4 倍）に落とした。
+ */
 export const DURATION: Record<MotionKind, number> = {
-  moved: 0.32,
-  lunge: 0.3,
-  hit: 0.36,
-  die: 0.45,
+  moved: 0.45,
+  lunge: 0.42,
+  hit: 0.5,
+  die: 0.64,
 };
 
 export type Motion = {
@@ -166,19 +174,23 @@ export type FxShape = 'slash' | 'burst' | 'ring';
 
 export type FxLook = { shape: FxShape; color: number; life: number };
 
+/*
+ * life は演出の長さ（秒）。動きと同じく 0.7 倍の速さに落としてある。
+ * 演出だけ速いままだと、振りの途中で光が消えて噛み合わない。
+ */
 export const FX: Record<string, FxLook> = {
-  cleave: { shape: 'slash', color: 0xffffff, life: 0.34 },
-  backstab: { shape: 'slash', color: 0xffffff, life: 0.34 },
-  smite: { shape: 'slash', color: 0xffffff, life: 0.34 },
-  fireball: { shape: 'burst', color: 0xe8c84a, life: 0.38 },
-  bolt: { shape: 'burst', color: 0xe8c84a, life: 0.38 },
-  frost: { shape: 'burst', color: 0xc8f0ff, life: 0.42 },
-  venom: { shape: 'burst', color: 0xaa78e6, life: 0.42 },
-  vanish: { shape: 'burst', color: 0xc8ced6, life: 0.5 },
-  heal: { shape: 'ring', color: 0x79d19a, life: 0.5 },
-  bless: { shape: 'ring', color: 0x79d19a, life: 0.5 },
-  taunt: { shape: 'ring', color: 0xe0c060, life: 0.5 },
-  bulwark: { shape: 'ring', color: 0xe0c060, life: 0.5 },
+  cleave: { shape: 'slash', color: 0xffffff, life: 0.49 },
+  backstab: { shape: 'slash', color: 0xffffff, life: 0.49 },
+  smite: { shape: 'slash', color: 0xffffff, life: 0.49 },
+  fireball: { shape: 'burst', color: 0xe8c84a, life: 0.54 },
+  bolt: { shape: 'burst', color: 0xe8c84a, life: 0.54 },
+  frost: { shape: 'burst', color: 0xc8f0ff, life: 0.6 },
+  venom: { shape: 'burst', color: 0xaa78e6, life: 0.6 },
+  vanish: { shape: 'burst', color: 0xc8ced6, life: 0.71 },
+  heal: { shape: 'ring', color: 0x79d19a, life: 0.71 },
+  bless: { shape: 'ring', color: 0x79d19a, life: 0.71 },
+  taunt: { shape: 'ring', color: 0xe0c060, life: 0.71 },
+  bulwark: { shape: 'ring', color: 0xe0c060, life: 0.71 },
 };
 
 /** わざの演出の、その瞬間の大きさと濃さ */
