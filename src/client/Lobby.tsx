@@ -11,6 +11,7 @@ import {
   VERSUS_PLAYERS,
   type GameState,
 } from '../shared/types';
+import { Backpack } from './Backpack';
 import { HowTo } from './HowTo';
 import { Icon, JobIcon, Portrait, TileIcon } from './Icon';
 import { Invite } from './Invite';
@@ -27,6 +28,8 @@ type Props = {
   onLoadout: (items: ItemId[]) => void;
   onSkillPick: (skillId: SkillId | null) => void;
   onRename: (name: string) => void;
+  /** 袋の並べ替え。盤の上と同じ口（ターンは使わない） */
+  onMoveItem: (instanceId: string, x: number, y: number, rot: number) => void;
   /** 行き先を変える。合流した人は変えられないので null が来る */
   onChooseDungeon: ((id: DungeonId) => void) | null;
   /**
@@ -37,6 +40,9 @@ type Props = {
 };
 
 type Tab = 'home' | 'gear' | 'dungeon';
+
+/** ホームの袋では使えない操作。Backpack は盤と同じ口を要求する */
+const noop = () => {};
 
 /**
  * 潜る前の画面。
@@ -68,6 +74,7 @@ export function Lobby({
   onLoadout,
   onSkillPick,
   onRename,
+  onMoveItem,
   onChooseDungeon,
   onVersus,
 }: Props) {
@@ -120,12 +127,23 @@ export function Lobby({
     }
   };
 
-  const takenCells = taking
-    .map((i) => stash[i])
-    .filter(Boolean)
-    .reduce((n, id) => n + itemDefOf(id).shape.length, 0);
-  const used = itemDefOf(job.startingItem).shape.length + takenCells;
-  const full = used > BAG_W * BAG_H;
+  /*
+   * 埋まっているマス。**サーバーの袋から数える。**
+   * 以前は「職業の基本装備の形 + 選んだものの形」を足していたが、
+   * それは実際の詰まり方とは別物で、入らなかったときも気づけなかった。
+   * いまは本物の袋があるので、そこを数えればよい。
+   */
+  const inBag = state.items.filter((i) => i.ownerId === myId && i.at !== null);
+  const used = inBag.reduce((n, i) => n + itemDefOf(i.itemId).shape.length, 0);
+
+  /*
+   * 選んだのに入らなかった数。
+   *
+   * 袋はサーバーが詰めるので、入らなかったものは**ただ現れない。**
+   * 選んだ絵は光ったままなのに袋に出てこないと、壊れているように見える。
+   * 数えて言う。袋の中身から職業の基本装備1つを引けば、持ち込めた数になる。
+   */
+  const spilled = Math.max(0, taking.length - Math.max(0, inBag.length - 1));
 
   /** 強さを棒で出す。数字だけだと、職業どうしの差が一目で分からない */
   const bar = (value: number, max: number) => (
@@ -317,26 +335,39 @@ export function Lobby({
               </button>
             </div>
 
-            {/* 袋。実物のマス目をそのまま出す */}
-            <div className="bag-head">
-              <span>
-                {used} / {BAG_W * BAG_H}
-              </span>
-              {full && <span className="warn-chip">!</span>}
-            </div>
-            <div
-              className="bag-grid preview"
-              style={{ gridTemplateColumns: `repeat(${BAG_W}, minmax(0, 1fr))` }}
-            >
-              {Array.from({ length: BAG_W * BAG_H }, (_, i) => (
-                <span
-                  key={i}
-                  className={`bag-cell${i < used ? ' full' : ''}`}
-                  style={{ gridColumn: (i % BAG_W) + 1, gridRow: Math.floor(i / BAG_W) + 1 }}
-                />
-              ))}
-            </div>
+            {/*
+              袋。**盤の上とまったく同じ部品**（Backpack）。
 
+              前はここだけ「何マス埋まるか」を数えた目盛りで、
+              中身は触れなかったし、剣が縦3マスであることも分からなかった。
+              本物を出せば、潜る前に詰め方を決められる。
+              使う・はずす・置くはターンを使う操作なので、ここでは出ない。
+            */}
+            {/* 「何マス使っているか」は Backpack が自分で出す。ここでは重ねない */}
+            <Backpack
+              state={state}
+              ownerId={myId}
+              mine
+              canArrange
+              canAct={false}
+              onUse={noop}
+              onDrop={noop}
+              onToggleEquip={noop}
+              onMove={onMoveItem}
+            />
+            {/* 入らなかったぶん。黙って消えるのが一番たちが悪い */}
+            {spilled > 0 && (
+              <p className="warn">
+                {spilled}つ入らなかった。袋を詰め直すか、持ち込みを減らす。
+              </p>
+            )}
+
+            {/*
+              倉庫からの持ち込み。**対戦では出さない。**
+              対戦の持ち物はドラフトで配る（03_改善構成.md 段階D D8）ので、
+              ここに並べても押せないボタンが並ぶだけになる。
+            */}
+            {!versus && (
             <div className="row-icons wrap">
               {stash.length === 0 ? (
                 <span className="empty-chip">
@@ -360,6 +391,7 @@ export function Lobby({
                 ))
               )}
             </div>
+            )}
           </div>
         )}
 

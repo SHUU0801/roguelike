@@ -125,11 +125,11 @@ function seedTutorial(state: GameState): void {
   put('sword', { x: 5, y: 9 });
 }
 
-/**
- * ホームで選んだ持ち込みを覚えておく。実際に袋へ入れるのは startGame。
- * ロビーの間だけ受け付ける。
+/*
+ * 持ち込みを覚えておく Map はもう無い。
+ * ロビーの時点で本物の ItemInstance を袋に入れるようにしたので、
+ * 「覚えておいて後で詰める」が要らなくなった（setLoadout に理由）。
  */
-const loadouts = new Map<string, ItemId[]>();
 /** ホームで選んだ「持ち込むわざ」。職業の基本わざに加えて1つ */
 const skillPicks = new Map<string, SkillId>();
 
@@ -159,13 +159,75 @@ export function setPlayerName(state: GameState, id: string, name: string): void 
   actor.name = name.slice(0, 12);
 }
 
+/**
+ * ホームの倉庫から持ち込むものを決める。
+ *
+ * ## 覚えておくのではなく、その場で袋に入れる
+ *
+ * 前は `loadouts` という Map に覚えておいて startGame でまとめて詰めていた。
+ * そのせいで**潜る前の画面では袋の中を触れなかった**——
+ * 出ていたのは「何マス埋まるか」を数えた目盛りで、
+ * 剣が縦3マスであることも、どこに入るかも分からなかった。
+ *
+ * いまは本物の ItemInstance をその場で袋に入れる。
+ * ロビーの袋と盤の上の袋が同じものになるので、
+ * **並べ替えも同じ `rearrange` を通る。** 画面側も同じ部品で出せる。
+ *
+ * ## 入れ替えは差分で
+ *
+ * 毎回ぜんぶ捨てて詰め直すと、**せっかく並べ替えた位置が消える。**
+ * 減ったものだけ外し、増えたものだけ入れる。
+ * 触っていないものは1マスも動かない。
+ *
+ * ## 対戦では受け取らない
+ *
+ * 倉庫を持ち込めると、たくさん周回した人が強い状態で出てくる
+ * （03_改善構成.md 段階D）。対戦の持ち物はドラフトで配る。
+ */
 export function setLoadout(state: GameState, id: string, itemIds: string[]): void {
   if (state.phase !== 'lobby') return;
-  const valid = itemIds.filter((v): v is ItemId => v in ITEMS).slice(0, BAG_W * BAG_H);
-  loadouts.set(id, valid);
+  if (state.mode === 'versus') return;
 
-  const actor = state.actors.find((a) => a.id === id);
-  if (actor) pushLog(state, `${actor.slot}番が ${valid.length} 個 持ち込む`);
+  const actor = state.actors.find((a) => a.id === id && a.kind === 'player');
+  if (!actor) return;
+
+  const want = itemIds.filter((v): v is ItemId => v in ITEMS).slice(0, BAG_W * BAG_H);
+
+  /*
+   * 職業の基本装備は持ち込みではないので、数に入れない。
+   * 入れると「剣を持ち込む」を選んだ瞬間に元から入っていた剣が
+   * 持ち込みぶんと数えられて、1本増えない。
+   */
+  const base = jobOf(actor.job ?? 'warrior').startingItem;
+  let baseSeen = false;
+
+  const extra: ItemInstance[] = [];
+  for (const item of carried(state, id)) {
+    if (!baseSeen && item.itemId === base) {
+      baseSeen = true;
+      continue;
+    }
+    extra.push(item);
+  }
+
+  // 要らなくなったものを外す（同じ種類は数で合わせる）
+  const need = [...want];
+  for (const item of extra) {
+    const at = need.findIndex((w) => w === item.itemId);
+    if (at >= 0) need.splice(at, 1); // そのまま残す。位置も動かさない
+    else state.items = state.items.filter((i) => i.id !== item.id);
+  }
+
+  // 増えたぶんを入れる。入らなければそこで止める（袋の大きさが上限）
+  let added = 0;
+  for (const itemId of need) {
+    if (!giveItem(state, id, itemId)) break;
+    added++;
+  }
+
+  if (added > 0 || need.length === 0) {
+    pushLog(state, `${actor.slot}番は ${want.length} 個 持ち込む`);
+  }
 }
 
 /** ロビーから探索を始める。ここで開始アイテムを配る */
@@ -176,38 +238,20 @@ export function startGame(state: GameState): void {
 
   for (const player of state.actors.filter((a) => a.kind === 'player')) {
     /*
-     * 持ち込むもの。
+     * ここで配るのは**ドラフトで取ったものだけ**（対戦）。
      *
-     * 協力: 職業の基本装備 + ホームの倉庫から入れたもの。
-     * 対戦: 職業の基本装備 + **ドラフトで取ったもの**。倉庫は使わない。
+     * 職業の基本装備も、倉庫からの持ち込みも、
+     * すでにロビーの時点で袋に入っている（addPlayer / setLoadout）。
+     * ここで入れ直すと二重になるし、ロビーで並べ替えた位置も消える。
      *
-     * 対戦で倉庫を許すと、**たくさん周回した人が強い状態で出てくる。**
-     * AI には倉庫が無いので AI 戦では一方的になるし、人間どうしでも
-     * 盤の上の判断ではなく外での蓄積で勝敗が決まる。
-     * 揃えるためにドラフトを入れたので、ここで倉庫を切る。
-     *
+     * 対戦では倉庫を使わない（setLoadout が受け取らない）ので、
+     * 袋に入っているのは職業の基本装備だけ。そこにドラフトぶんを足す。
      * 入らなかったぶんは黙って捨てる（袋の大きさが上限）
      */
-    const extras: ItemId[] =
-      state.mode === 'versus'
-        ? (state.draft?.taken[player.team === 'M' ? 'A' : player.team] ?? [])
-        : (loadouts.get(player.id) ?? []);
-    const bring: ItemId[] = [jobOf(player.job).startingItem, ...extras];
-    for (const itemId of bring) {
-      const item: ItemInstance = {
-        id: newId('i'),
-        itemId,
-        pos: null,
-        ownerId: null,
-        at: null,
-        rot: 0,
-      };
-      state.items.push(item);
-      if (!putIn(state, player.id, item)) {
-        state.items = state.items.filter((i) => i.id !== item.id);
-      }
+    if (state.mode === 'versus') {
+      const won = state.draft?.taken[player.team === 'M' ? 'A' : player.team] ?? [];
+      for (const itemId of won) giveItem(state, player.id, itemId);
     }
-    loadouts.delete(player.id);
 
     /*
      * 持ち込むわざ。覚え直す手間を省くぶん、浅いところを周回する意味が出る。
@@ -374,6 +418,36 @@ function allBots(state: GameState, team: TeamId): boolean {
   return members.every((a) => a.bot === true);
 }
 
+/**
+ * 袋に1つ入れる。入らなければ false（作りかけを残さない）。
+ *
+ * **袋はロビーにいる間から本物。** 以前は持ち込みを Map に覚えておいて
+ * startGame でまとめて詰めていたが、それだと潜る前の画面で
+ * 袋の中を触れなかった（マスの数を数えた目盛りを出すだけだった）。
+ * 本物の ItemInstance を最初から置いておけば、
+ * **盤の上とまったく同じ袋**を同じ部品で出せて、並べ替えも同じ道を通る。
+ */
+function giveItem(state: GameState, ownerId: string, itemId: ItemId): boolean {
+  const item: ItemInstance = {
+    id: newId('i'),
+    itemId,
+    pos: null,
+    ownerId: null,
+    at: null,
+    rot: 0,
+  };
+  state.items.push(item);
+  if (putIn(state, ownerId, item)) return true;
+  // 入らなかった。盤にも袋にも属さない幽霊を残さない
+  state.items = state.items.filter((i) => i.id !== item.id);
+  return false;
+}
+
+/** その人が袋に持っているもの */
+function carried(state: GameState, ownerId: string): ItemInstance[] {
+  return state.items.filter((i) => i.ownerId === ownerId && i.at !== null);
+}
+
 export function addPlayer(state: GameState, id: string): void {
   if (state.actors.some((a) => a.id === id)) return;
 
@@ -424,6 +498,9 @@ export function addPlayer(state: GameState, id: string): void {
     offers: [],
     perks: [],
   });
+  // 職業の基本装備は加わった時点で袋に入れる。
+  // ロビーでも袋の中身が本物なので、潜る前に並べ替えられる
+  giveItem(state, id, def.startingItem);
   pushLog(state, `${slot}番が加わった（${def.name}）`);
 }
 
@@ -440,6 +517,7 @@ export function chooseJob(state: GameState, id: string, job: JobId): void {
   if (!actor) return;
   if (actor.job === job) return;
 
+  const before: JobId = actor.job ?? 'warrior';
   const def = jobOf(job);
   actor.job = job;
   actor.maxHp = def.maxHp;
@@ -449,6 +527,16 @@ export function chooseJob(state: GameState, id: string, job: JobId): void {
   // 覚えているわざも入れ替える。前の職業のわざを持ち越させない
   actor.skills = [BASE_SKILL[job]];
   actor.cooldowns = {};
+
+  /*
+   * 基本装備も入れ替える。前の職業のものが袋に残ると、
+   * 職業を見比べているだけで剣も杖も溜まっていく。
+   * **前の職業の1つだけ**を外す。持ち込みで同じ物を選んでいても巻き込まない。
+   */
+  const old = carried(state, id).find((i) => i.itemId === jobOf(before).startingItem);
+  if (old) state.items = state.items.filter((i) => i.id !== old.id);
+  giveItem(state, id, def.startingItem);
+
   pushLog(state, `${actor.slot}番は${def.name}を選んだ`);
 }
 

@@ -334,6 +334,7 @@ export function App() {
         onLoadout={takeLoadout}
         onSkillPick={conn.setSkillPick}
         onRename={conn.setPlayerName}
+        onMoveItem={conn.moveItem}
         /* 合流した人は行き先を変えられない。変えると先に入っている人が困る */
         onChooseDungeon={joined ? null : goToDungeon}
         /* 協力 ⇄ 対戦も同じ。部屋ごと作り直すので、合流した人は変えられない */

@@ -10,7 +10,16 @@ type Props = {
   ownerId: string;
   /** 自分の袋か。他人の袋は見るだけ */
   mine: boolean;
-  playing: boolean;
+  /**
+   * 並べ替えられるか。**潜る前のホームでも true。**
+   *
+   * 以前はここが `playing` 1つで、「盤の上かどうか」と
+   * 「袋を触れるか」を兼ねていた。そのせいでホームの袋が
+   * 完全に触れず、何マス埋まるかを見るだけの目盛りになっていた。
+   */
+  canArrange: boolean;
+  /** 使う・はずす・置くができるか。**盤の上にいるときだけ** */
+  canAct: boolean;
   onUse: (instanceId: string) => void;
   onDrop: (instanceId: string) => void;
   /** 装備の付け外し。1ターン使う */
@@ -69,7 +78,8 @@ export function Backpack({
   state,
   ownerId,
   mine,
-  playing,
+  canArrange,
+  canAct,
   onUse,
   onDrop,
   onToggleEquip,
@@ -145,7 +155,7 @@ export function Backpack({
   };
 
   const onPointerDown = (item: ItemInstance) => (e: PointerEvent<HTMLButtonElement>) => {
-    if (!mine || !playing) return;
+    if (!mine || !canArrange) return;
     /*
      * ここでは掴まない。持ち上げもしない。覚えるだけ。
      *
@@ -224,7 +234,7 @@ export function Backpack({
   };
 
   const lift = (item: ItemInstance) => {
-    if (!mine || !playing) return;
+    if (!mine || !canArrange) return;
     if (held === item.id) {
       setHeld(null);
       return;
@@ -266,7 +276,7 @@ export function Backpack({
           ]
             .filter(Boolean)
             .join(' ')}
-          disabled={!mine || !playing}
+          disabled={!mine || !canArrange}
           onClick={() => {
             if (holding && canDrop) {
               onMove(holding.id, x, y, rot);
@@ -379,28 +389,34 @@ export function Backpack({
       )}
 
       {/* 持ち上げたものへの操作。盤に重ならないよう袋の下に出す */}
-      {holding && mine && playing && (
+      {holding && mine && canArrange && (
         <div className="bag-actions">
           <span className="bag-name">{itemDefOf(holding.itemId).name}</span>
           {shapeSize(itemDefOf(holding.itemId).shape)[0] !==
             shapeSize(itemDefOf(holding.itemId).shape)[1] && (
             <button onClick={() => setRot((r) => (r + 1) % 2)}>回す</button>
           )}
-          {/* 装備は使えない。袋に入れていることが効果そのもの */}
+          {/*
+            使う・はずす・置くは**盤の上だけ**。
+            どれも1ターン使う操作なので、ターンの無いホームでは意味を成さない。
+            ホームでは補正だけ出す——何が効いているかは知りたいので。
+          */}
           {isUsable(holding.itemId) ? (
-            <button onClick={() => onUse(holding.id)}>使う</button>
+            canAct && <button onClick={() => onUse(holding.id)}>使う</button>
           ) : (
             <>
               <span className={`equip-chip${holding.off ? ' off' : ''}`}>
                 {holding.off ? '外している' : equipLabel(holding.itemId)}
               </span>
               {/* 付け外しは1ターン使う。無料だと剣の弱点が無いのと同じになる */}
-              <button onClick={() => onToggleEquip(holding.id)}>
-                {holding.off ? 'つける' : 'はずす'}
-              </button>
+              {canAct && (
+                <button onClick={() => onToggleEquip(holding.id)}>
+                  {holding.off ? 'つける' : 'はずす'}
+                </button>
+              )}
             </>
           )}
-          <button onClick={() => onDrop(holding.id)}>置く</button>
+          {canAct && <button onClick={() => onDrop(holding.id)}>置く</button>}
         </div>
       )}
     </div>

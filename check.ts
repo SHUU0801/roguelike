@@ -8,6 +8,7 @@ import {
   createInitialGame,
   draftPick,
   fillWithBots,
+  setLoadout,
   inventoryOf,
   setLogScope,
   startGame,
@@ -39,12 +40,13 @@ import { monsterAct } from './src/server/ai';
 import { botIntent } from './src/server/duel';
 import { viewFor } from './src/server/view';
 import { arenaSpawn, createMirrorFloor } from './src/server/dungeon';
-import { JOBS, type JobId } from './src/shared/jobs';
+import { JOBS, JOB_IDS, jobOf, type JobId } from './src/shared/jobs';
 import { BASE_SKILL } from './src/shared/skills';
 import { OFFER_COUNT, PERKS, PERK_IDS, perkCount, perkOf } from './src/shared/perks';
 import { ITEMS, type ItemId } from './src/shared/items';
 import {
   BAG_H,
+  BAG_W,
   DIR_DELTA,
   DRAFT_OFFER,
   DRAFT_ROUNDS,
@@ -2413,6 +2415,91 @@ function sees(state: GameState, team: 'A' | 'B', p: Pos): boolean {
     return state.items.filter((i) => i.ownerId === who?.id).length;
   };
   assert(countOf('A') === countOf('B'), '放置しても持ち物の数は左右で同じ');
+}
+
+// --- 78. ロビーの袋は本物 ---
+{
+  /*
+   * **潜る前から袋の中身が本物である**こと。
+   *
+   * 前は持ち込みを Map に覚えておいて startGame でまとめて詰めていたので、
+   * ホームの画面では袋を触れず、何マス埋まるかの目盛りしか出せなかった。
+   * 作者の指摘（「バックの中いじれない」）はこれ。
+   */
+  const state = createInitialGame('ruin', 'coop');
+  addPlayer(state, 'p1');
+
+  const bagOf = (id: string) => state.items.filter((i) => i.ownerId === id && i.at !== null);
+
+  assert(bagOf('p1').length === 1, '加わった時点で基本装備が袋に入っている');
+  const start = bagOf('p1')[0];
+  assert(start.at !== null, '位置も決まっている（並べ替えられる）');
+
+  // 持ち込みを選ぶと、その場で袋に入る
+  setLoadout(state, 'p1', ['potion', 'potion']);
+  assert(bagOf('p1').length === 3, '選んだぶんがその場で袋に入る');
+
+  /*
+   * 並べ替えがロビーで効く。**盤の上と同じ `rearrange` を通る。**
+   * 薬草で試すのは、1マスなのでどこへでも置けるから
+   * （形のあるものだと「置けなかった」のか「ロビーだから駄目」なのか分からない）。
+   */
+  const potion = bagOf('p1').find((i) => i.itemId === 'potion');
+  const corner = { x: BAG_W - 1, y: BAG_H - 1 };
+  assert(
+    potion !== undefined && rearrangeItem(state, 'p1', potion.id, corner, 0),
+    'ロビーでも並べ替えられる',
+  );
+  const nowAt = bagOf('p1').find((i) => i.id === potion?.id)?.at;
+  assert(
+    nowAt?.x === corner.x && nowAt?.y === corner.y,
+    '並べ替えた位置がそのまま残る',
+  );
+
+  /*
+   * **減らしても、残ったものの位置は動かない。**
+   * 毎回捨てて詰め直すと、並べ替えたものが元に戻ってしまう。
+   */
+  const where = bagOf('p1').find((i) => i.id === start.id)?.at ?? null;
+  setLoadout(state, 'p1', ['potion']);
+  assert(bagOf('p1').length === 2, '減らしたぶんが外れる');
+  const after = bagOf('p1').find((i) => i.id === start.id)?.at ?? null;
+  assert(
+    where !== null && after !== null && after.x === where.x && after.y === where.y,
+    '触っていないものは動かない',
+  );
+
+  // 職業を変えると基本装備も入れ替わる（溜まらない）
+  const before = jobOf(state.actors[0].job ?? 'warrior').startingItem;
+  const other = JOB_IDS.find((j) => j !== state.actors[0].job);
+  if (other) chooseJob(state, 'p1', other);
+  const kinds = bagOf('p1').map((i) => i.itemId);
+  assert(
+    kinds.filter((k) => k === before).length === 0 || before === jobOf(other ?? 'warrior').startingItem,
+    '前の職業の基本装備は残らない',
+  );
+  assert(bagOf('p1').length === 2, '職業を変えても持ち込みは残る');
+
+  // 始めても二重に配られない
+  const was = bagOf('p1').length;
+  startGame(state);
+  assert(bagOf('p1').length === was, '始めても二重に入らない');
+}
+
+// --- 79. 対戦では倉庫を持ち込めない ---
+{
+  /*
+   * 持ち込めると、たくさん周回した人が強い状態で出てくる（段階D D8）。
+   * 対戦の持ち物はドラフトで配る。
+   */
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'v1');
+  addPlayer(state, 'v2');
+
+  const bag = () => state.items.filter((i) => i.ownerId === 'v1' && i.at !== null);
+  const before = bag().length;
+  setLoadout(state, 'v1', ['potion', 'potion']);
+  assert(bag().length === before, '対戦では倉庫から持ち込めない');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);
