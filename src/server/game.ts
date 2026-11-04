@@ -256,6 +256,8 @@ export function beginDraft(state: GameState): void {
     round: 0,
     picking: firstPicker(0),
     taken: { A: [], B: [] },
+    // 締め切りは部屋が決める（人が2人いるときだけ動かす）
+    deadlineAt: null,
   };
   pushLog(state, `支度。${DRAFT_OFFER}つから1つずつ、交互に取る`);
 }
@@ -289,6 +291,8 @@ export function draftPick(state: GameState, team: TeamId, itemId: ItemId): boole
   draft.offer.splice(at, 1);
   draft.taken[team].push(itemId);
   pushLog(state, `チーム${team} は${ITEMS[itemId].name}を取った`);
+  // 番が変わるので、前の番の締め切りは意味を失う。部屋が掛け直す
+  draft.deadlineAt = null;
 
   const other: TeamId = team === 'A' ? 'B' : 'A';
   // 相手がまだこの巡を取っていない → 番を渡すだけ
@@ -315,11 +319,29 @@ export function draftPick(state: GameState, team: TeamId, itemId: ItemId): boole
 }
 
 /**
+ * いまの番のチームの代わりに1つ取る。取れたら true。
+ *
+ * AI の番と、人間の持ち時間が切れたときの両方で使う。
+ * **どちらも同じ選び方にしてある。** 放っておいたときの結果が
+ * AI の手と違うと、「待ったほうが得／損」が生まれる。
+ *
+ * **乱数を使わない。** 抽選で決めると、
+ * 「放っておいたら当たりを引いた」が起きる。
+ */
+export function autoPickFor(state: GameState): boolean {
+  const draft = state.draft;
+  if (state.phase !== 'draft' || !draft) return false;
+
+  const want = BOT_WANTS.find((id) => draft.offer.includes(id)) ?? draft.offer[0];
+  if (!want) return false;
+  return draftPick(state, draft.picking, want);
+}
+
+/**
  * AI の番なら自動で取る。番が人間に戻るまで繰り返す。
  *
- * **乱数を使わない。** 相手の支度が抽選で決まると、
- * 盤を鏡像にしてまで条件を揃えた意味が消える。
- * 同じ候補が出れば AI は必ず同じ物を取る。
+ * 相手の支度が抽選で決まると、盤を鏡像にしてまで条件を揃えた意味が消える。
+ * 同じ候補が出れば AI は必ず同じ物を取る（autoPickFor）。
  */
 export function autoDraft(state: GameState): void {
   // 候補が尽きるより多く回らない。番が動かない事故で無限に回らないための止め
@@ -327,10 +349,7 @@ export function autoDraft(state: GameState): void {
     const draft = state.draft;
     if (state.phase !== 'draft' || !draft) return;
     if (!allBots(state, draft.picking)) return;
-
-    const want = BOT_WANTS.find((id) => draft.offer.includes(id)) ?? draft.offer[0];
-    if (!want) return;
-    if (!draftPick(state, draft.picking, want)) return;
+    if (!autoPickFor(state)) return;
   }
 }
 

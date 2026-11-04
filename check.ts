@@ -2,6 +2,7 @@
 import {
   addPlayer,
   autoDraft,
+  autoPickFor,
   beginDraft,
   chooseJob,
   createInitialGame,
@@ -2335,6 +2336,83 @@ function sees(state: GameState, team: 'A' | 'B', p: Pos): boolean {
     byTime <= RUNS / 3,
     `ほとんどは倒して決着する（時間切れ ${byTime}/${RUNS}）`,
   );
+}
+
+// --- 76. ドラフトの持ち時間 ---
+{
+  /*
+   * **選ばれないまま止まらないこと**がこの仕掛けの目的。
+   * 時間を計るのは部屋（GameRoom）の仕事なので、ここで確かめるのは
+   * 「切れたときに何が起きるか」＝ autoPickFor のほう。
+   */
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  beginDraft(state);
+
+  assert(state.draft?.deadlineAt === null, '締め切りは部屋が掛ける（初めは null）');
+
+  const offer = [...(state.draft?.offer ?? [])];
+  const was = state.draft?.picking;
+
+  // 時間切れ。かわりに取る
+  assert(autoPickFor(state), '時間切れでも1つ取る');
+  assert(
+    was !== undefined && state.draft?.taken[was].length === 1,
+    '**飛ばさない。** 取らずに進めると片方だけ持ち物が少なくなる',
+  );
+  assert(state.draft?.picking !== was, '取ったら番が移る');
+
+  /*
+   * **AI の手と同じ順で選ぶ。**
+   * 放っておいたときの結果が AI の手と違うと、
+   * 「待ったほうが得／損」が生まれる。
+   */
+  const wanted = ['sword', 'shield', 'potion', 'torch', 'bomb', 'scroll'].find((id) =>
+    offer.includes(id as ItemId),
+  );
+  assert(
+    was !== undefined && state.draft?.taken[was][0] === wanted,
+    `決まった順で取る（${wanted}）`,
+  );
+
+  // 候補が無ければ何もしない（落ちない）
+  const empty = createInitialGame('ruin', 'versus');
+  addPlayer(empty, 'q1');
+  addPlayer(empty, 'q2');
+  beginDraft(empty);
+  if (empty.draft) empty.draft.offer = [];
+  assert(!autoPickFor(empty), '候補が無ければ取らない');
+
+  // 支度の最中でなければ何もしない
+  const playing = createInitialGame('ruin', 'versus');
+  addPlayer(playing, 'r1');
+  addPlayer(playing, 'r2');
+  startGame(playing);
+  assert(!autoPickFor(playing), '試合中は取れない');
+}
+
+// --- 77. 持ち時間が切れ続けても支度は終わる ---
+{
+  /*
+   * 両方が放置した場合。**必ず試合が始まる**こと。
+   * ここが止まると、部屋が永久にロビーでも盤でもない状態で残る。
+   */
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  beginDraft(state);
+
+  for (let i = 0; i < DRAFT_ROUNDS * 2 + 2 && state.phase === 'draft'; i++) {
+    autoPickFor(state);
+  }
+  assert(state.phase === 'playing', '両方が放置しても試合は始まる');
+
+  const countOf = (t: 'A' | 'B') => {
+    const who = state.actors.find((x) => x.team === t && x.kind === 'player');
+    return state.items.filter((i) => i.ownerId === who?.id).length;
+  };
+  assert(countOf('A') === countOf('B'), '放置しても持ち物の数は左右で同じ');
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

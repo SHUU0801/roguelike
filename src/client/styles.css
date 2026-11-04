@@ -2762,3 +2762,19 @@ button.wide.danger {
   color: #e0c060;
   font-variant-numeric: tabular-nums;
 }
+
+/* したくの残り秒。番の表示の右に小さく置く */
+.draft-clock {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c8ced6;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 残り10秒を切ったら色を変える。押し忘れで取られる手前 */
+.draft-clock.hurry { color: #e08a3c; border-color: #e08a3c; }

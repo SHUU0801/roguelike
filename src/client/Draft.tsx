@@ -1,6 +1,7 @@
 import { itemDefOf, type ItemId } from '../shared/items';
 import { DRAFT_ROUNDS, teamOf, type GameState } from '../shared/types';
 import { Icon, TileIcon } from './Icon';
+import { useSecondsLeft } from './clock';
 
 type Props = {
   state: GameState;
@@ -38,6 +39,14 @@ export function Draft({ state, myId, onPick }: Props) {
   const theirs = myTeam ? draft.taken[foeTeam] : [];
   const myTurn = myTeam !== null && draft.picking === myTeam;
 
+  /*
+   * 持ち時間。人間が1人のとき（相手が AI）はサーバーが動かさないので null。
+   * 急かす相手がいないのに秒数が出ていると、落ち着いて比べられない。
+   */
+  const left = useSecondsLeft(draft.deadlineAt);
+  /** 残りが少ない。押し忘れで取られる手前なので、ここだけ色を変える */
+  const hurry = left !== null && left <= 10;
+
   const row = (label: string, list: ItemId[]) => (
     <div className="draft-row">
       <span className="draft-label">{label}</span>
@@ -64,6 +73,12 @@ export function Draft({ state, myId, onPick }: Props) {
       {/* いま誰の番か。ここが分からないと、押せない理由が分からない */}
       <p className={`draft-turn${myTurn ? ' mine' : ''}`}>
         {myTurn ? 'あなたの番。1つ取る' : '相手が選んでいる…'}
+        {/*
+          残り秒。**自分の番でなくても出す。**
+          相手が止まっているのか、あと何秒で進むのかが分からないと、
+          待っている側は切断を疑って部屋を出てしまう。
+        */}
+        {left !== null && <span className={`draft-clock${hurry ? ' hurry' : ''}`}>{left}</span>}
       </p>
 
       <div className="draft-offer">
@@ -114,6 +129,11 @@ export function Draft({ state, myId, onPick }: Props) {
       <p className="draft-note">
         {/* 1つ流れることを先に言う。取り損ねたと思われないように */}
         {draft.offer.length}つのうち1つを取る。残りは流れる。
+        {/*
+          切れたらどうなるかを先に書く。「取られる」と分かっていれば
+          押し忘れが事故にならないし、わざと放置する人も減る。
+        */}
+        {left !== null && ' 時間切れになると、かわりに取られる。'}
       </p>
     </div>
   );

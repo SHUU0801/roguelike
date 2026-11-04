@@ -1,6 +1,7 @@
 import { Room, type Client } from 'colyseus';
 import {
   MAX_PLAYERS,
+  DRAFT_LIMIT_MS,
   TURN_LIMIT_MS,
   VERSUS_PLAYERS,
   teamOf,
@@ -17,6 +18,7 @@ import { isPerkId } from '../shared/perks';
 import {
   addPlayer,
   autoDraft,
+  autoPickFor,
   beginDraft,
   chooseJob,
   createInitialGame,
@@ -56,6 +58,7 @@ export class GameRoom extends Room {
   /** 回線が切れて復帰を待っている人。この人のせいでターンを止めない */
   private away = new Set<string>();
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  private draftTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * 部屋を作るときに、どのダンジョンへ潜るかが決まる。
@@ -152,6 +155,7 @@ export class GameRoom extends Room {
         fillWithBots(this.game);
         beginDraft(this.game);
         autoDraft(this.game);
+        this.startDraftTimer();
         updateVision(this.game);
         this.publish();
         return;
@@ -181,6 +185,7 @@ export class GameRoom extends Room {
       if (!draftPick(this.game, team, itemId)) return;
       // 相手が AI なら、その番はここで進む
       autoDraft(this.game);
+      this.startDraftTimer();
       updateVision(this.game);
       this.publish();
     });
@@ -244,6 +249,12 @@ export class GameRoom extends Room {
     this.intents.delete(id);
     this.away.add(id);
     pushLog(this.game, '仲間の回線が切れた');
+    /*
+     * 支度の最中なら締め切りを掛け直す。
+     * 抜けた人の番なら、残った人がいつまでも待たされないように締め切りが要る。
+     * 残ったのが1人だけなら、急かす相手がいないので逆に外れる。
+     */
+    this.startDraftTimer();
     this.publish();
     this.tryResolveTurn();
 
@@ -257,6 +268,8 @@ export class GameRoom extends Room {
       pushLog(this.game, '仲間はダンジョンを去った');
     }
 
+    // 戻ってきた／去ったで人数が変わる。支度中なら掛け直す
+    this.startDraftTimer();
     updateVision(this.game);
     this.publish();
     this.tryResolveTurn();
@@ -307,6 +320,43 @@ export class GameRoom extends Room {
     if (this.turnTimer) clearTimeout(this.turnTimer);
     this.turnTimer = null;
     this.game.deadlineAt = null;
+  }
+
+  /**
+   * 支度の持ち時間（段階D D8）。番が変わるたびに掛け直す。
+   *
+   * **人間が2人以上いるときだけ動かす。** ターンの締め切りと同じ考え方で、
+   * 相手が AI なら待たせている人がいないので急かす理由が無い。
+   * 急かすと、1人で試している人が比べる前に押すことになる。
+   *
+   * 切れたら決まった順で勝手に取る。**飛ばさない。**
+   * 飛ばすと片方だけ持ち物が少ない試合になり、
+   * 「放っておいた側が不利」ではなく「放っておかれた側が有利」になる。
+   */
+  private startDraftTimer(): void {
+    this.clearDraftTimer();
+
+    const draft = this.game.draft;
+    if (this.game.phase !== 'draft' || !draft) return;
+    if (this.activePlayers().length < 2) return;
+
+    draft.deadlineAt = Date.now() + DRAFT_LIMIT_MS;
+    this.draftTimer = setTimeout(() => {
+      this.draftTimer = null;
+      if (!autoPickFor(this.game)) return;
+      pushLog(this.game, '時間切れ。かわりに取った');
+      // 相手も AI なら続けて進む。まだ人間が残っていれば掛け直す
+      autoDraft(this.game);
+      this.startDraftTimer();
+      updateVision(this.game);
+      this.publish();
+    }, DRAFT_LIMIT_MS);
+  }
+
+  private clearDraftTimer(): void {
+    if (this.draftTimer) clearTimeout(this.draftTimer);
+    this.draftTimer = null;
+    if (this.game.draft) this.game.draft.deadlineAt = null;
   }
 
   /** 揃っていれば解決して true。まだなら false */
@@ -364,5 +414,6 @@ export class GameRoom extends Room {
 
   onDispose(): void {
     this.clearTurnTimer();
+    this.clearDraftTimer();
   }
 }

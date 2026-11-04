@@ -15,6 +15,7 @@ import { dirBetween, findPath, shouldStop } from './travel';
 import { goToDungeon, goToVersus, useGame } from './useGame';
 import { DURATION } from './motion';
 import { Draft } from './Draft';
+import { useSecondsLeft } from './clock';
 import { recordRun, loadProfile } from './profile';
 import { bringHome, markCleared, markTutorialDone, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
@@ -42,20 +43,6 @@ import {
  * 置いていくと、歩き終わる前に次の1歩が始まって足が流れる。
  */
 const STEP_MS = Math.round(DURATION.moved * 1000 * 0.7);
-
-/** 締め切りまでの残り秒。待っていないときは null */
-function useSecondsLeft(deadlineAt: number | null): number | null {
-  const [, tick] = useState(0);
-
-  useEffect(() => {
-    if (deadlineAt === null) return;
-    const id = setInterval(() => tick((n) => n + 1), 250);
-    return () => clearInterval(id);
-  }, [deadlineAt]);
-
-  if (deadlineAt === null) return null;
-  return Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000));
-}
 
 export function App() {
   const conn = useGame();
