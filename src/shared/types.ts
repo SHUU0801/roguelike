@@ -4,7 +4,7 @@
  */
 
 import type { DungeonId } from './dungeons';
-import { itemDefOf } from './items';
+import { itemDefOf, type ItemId } from './items';
 import type { JobId } from './jobs';
 import type { PerkId } from './perks';
 import type { EffectId, SkillId } from './skills';
@@ -52,6 +52,94 @@ export const VERSUS_PLAYERS = TEAM_SIZE * 2;
 export function teamForSlot(slot: number): TeamId {
   return slot <= TEAM_SIZE ? 'A' : 'B';
 }
+
+/**
+ * 開門までのターン数（03_改善構成.md 段階D D7）。
+ *
+ * **前半は互いの陣地に閉じこめる。** 開幕から殴り合えると、
+ * 盤に置いたアイテムも職業の違いも効く前に殴り合いだけで終わる。
+ * 先に支度をさせてから、同時に扉を開ける。
+ *
+ * 鏡像なので、どちらの陣地にも同じものが同じ距離に置いてある。
+ * **15ターンで何を拾い、何を装備するか**だけが差になる。
+ */
+export const EXPLORE_TURNS = 15;
+
+/**
+ * 1試合の上限ターン（段階D D9）。
+ *
+ * 置かないと、互いに逃げ続ける盤が終わらない。
+ * 松明が尽きれば毎ターン傷つくので放っておいても決着はするが、
+ * **それは「どちらが先に立ち止まったか」で決まる**ので対戦の答えにならない。
+ *
+ * ## 120 の根拠（測った値）
+ *
+ * 最初は 60 にしていた。AI どうしで40回まわして測ったら、
+ * **殴り合いだけで決着するのは 48〜87 ターン（中央値 64）**だった。
+ * 60 はその真ん中なので、**試合の半分を戦っている最中に切っていた。**
+ * 時間切れの判定は「本当に差がつかなかった盤」のための逃げ道であって、
+ * 決着の主な手段にしてはいけない。
+ *
+ * 一番長かった 87 に余裕を足して 120 にした。
+ * 松明は 260 から減るので、ここでは尽きない（尽きると時間ではなく
+ * 松明が勝敗を決めることになる）。
+ */
+export const MATCH_TURNS = 120;
+
+/**
+ * ドラフトの巡数（段階D D8）。
+ *
+ * **必ず偶数にすること。** 奇数だと先に選べる回数が 2:1 になり、
+ * A と B のどちらに入ったかだけで有利不利が決まる。
+ * 仕様書が「ここは譲れない」と名指ししている唯一の数字。
+ */
+export const DRAFT_ROUNDS = 2;
+
+/** 1巡に出す候補の数。2チームが1つずつ取り、**1つ流れる** */
+export const DRAFT_OFFER = 3;
+
+/**
+ * 中央の扉。開くまで左右の陣地はつながっていない。
+ *
+ * ## 通れるかどうかを別の欄で持たない
+ *
+ * 閉じている間、扉のマスは**タイルそのものが 'wall'**。
+ * 開くときに 'floor' へ書き換える。
+ * 「壁か」を見ている箇所はサーバーにも画面にも散らばっているので、
+ * `tiles` と別に「閉じている」欄を持つと、見落とした1か所から
+ * すり抜けられる。タイルを変えてしまえば、見落としようがない。
+ *
+ * `cells` を持っているのは**画面が扉として描くため**だけ。
+ */
+export type Gate = {
+  cells: Pos[];
+  /** このターン数を終えたら開く */
+  opensAt: number;
+  open: boolean;
+};
+
+/**
+ * 潜る前のドラフト（段階D D8）。
+ *
+ * 1巡に `DRAFT_OFFER` 個が出て、2チームが**交互に**1つずつ取る。
+ * 残った1つは流れる。先に選ぶ側は巡ごとに入れ替わり、
+ * 巡数が偶数なので**先取りの回数は必ず同じ**になる。
+ *
+ * 候補は全種類を混ぜて配り切る。こうすると
+ * 「いい物が一度も出なかった」側が生まれない。
+ */
+export type Draft = {
+  /** いま出ている候補 */
+  offer: ItemId[];
+  /** 何巡目か（0起点） */
+  round: number;
+  /** いま選ぶ番のチーム */
+  picking: TeamId;
+  /** チームごとに取ったもの。試合開始時にそのチーム全員の袋へ入る */
+  taken: Record<TeamId, ItemId[]>;
+  /** まだ配っていない候補。巡が変わるとここから補充する */
+  rest: ItemId[];
+};
 
 /** 部屋の矩形。視界の処理とモンスターの配置に使う */
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -256,8 +344,11 @@ export type GameState = {
    * 乱数・視界・ログ・フロア生成の3点がこれで分かれる（GameMode に理由）。
    */
   mode: GameMode;
-  /** lobby = 仲間を待っている状態。「はじめる」で playing になる */
-  phase: 'lobby' | 'playing' | 'won' | 'lost';
+  /**
+    * lobby = 仲間を待っている / draft = 対戦の支度（段階D D8）/ playing = 盤の上。
+    * draft は対戦にしか無い。協力は lobby から直接 playing へ行く。
+    */
+  phase: 'lobby' | 'draft' | 'playing' | 'won' | 'lost';
   /**
    * lost の中身。全員が自分から引き返したなら 'left'、
    * 1人でも倒れていたなら 'dead'。文面を分けるためだけに持つ。
@@ -301,6 +392,21 @@ export type GameState = {
   waitingFor: string[];
   /** ターンの締め切り（epoch ミリ秒）。待っていないときは null */
   deadlineAt: number | null;
+  /**
+   * 中央の扉（段階D D7）。対戦のときだけ入る。
+   * 開くまで左右はつながっていない。
+   */
+  gate?: Gate;
+  /** 潜る前のドラフト（段階D D8）。終わると消える */
+  draft?: Draft;
+  /**
+   * チームごとの与ダメージ合計（段階D D9）。
+   *
+   * 時間切れの判定にだけ使う。生存数も残HPも並んだとき、
+   * **攻めた側を勝たせる**ための最後の物差し。
+   * これが無いと、互いに逃げ回った試合が引き分けで終わる。
+   */
+  dealt: Record<TeamId, number>;
   /**
    * 対戦の勝者。決着がつくまで undefined。
    *

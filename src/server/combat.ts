@@ -4,6 +4,7 @@ import {
   effectiveAtk,
   effectiveDef,
   hasEffect,
+  isHostile,
   teamOf,
   type Actor,
   type GameState,
@@ -80,6 +81,26 @@ export function damage(
     : amount;
 
   defender.hp = Math.max(0, defender.hp - dealt);
+
+  /*
+   * 相手チームに与えた傷を数える（段階D D9）。
+   *
+   * 時間切れのとき、生存数も残HPも並んだら**攻めた側を勝たせる**ための物差し。
+   *
+   * **モンスターに与えた傷は数えない。** 数えると、相手に近づかず
+   * コウモリを殴り続けた側が時間切れで勝ててしまう。対戦の答えは
+   * 「相手に何をしたか」であって「何ターン働いたか」ではない。
+   */
+  if (
+    state.mode === 'versus' &&
+    attacker !== undefined &&
+    attacker.kind === 'player' &&
+    defender.kind === 'player' &&
+    isHostile(attacker, defender)
+  ) {
+    const side = teamOf(attacker);
+    if (side !== null) state.dealt[side] += dealt;
+  }
 
   /*
    * 殴り合いの行は、**殴った側と殴られた側の両方に見せる。**

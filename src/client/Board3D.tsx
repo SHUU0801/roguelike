@@ -585,6 +585,15 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
     clear(k.things);
     k.hero = null;
 
+    /*
+     * 中央の扉（段階D D7）。閉じている間は壁そのものなので、
+     * **印を付けないと「ただの行き止まり」に見える。**
+     * 開くまで待つ仕掛けなのに、そこが開くと分からないのでは意味がない。
+     */
+    const gate = new Set(
+      state.gate && !state.gate.open ? state.gate.cells.map((c) => `${c.x},${c.y}`) : [],
+    );
+
     const cx = me ? me.pos.x : Math.floor(floor.width / 2);
     const cy = me ? me.pos.y : Math.floor(floor.height / 2);
     const half = VIEW;
@@ -604,6 +613,8 @@ export function Board3D({ state, myId, turnEffects, onMove, onTravel, path }: Pr
            */
           const mat = new THREE.MeshLambertMaterial({ map: tileTex(theme.wall) });
           if (!visible) mat.color.setScalar(0.45);
+          // 扉は光らせる。壁の中で1か所だけ色が違えば、そこが特別だと分かる
+          if (gate.has(`${x},${y}`)) mat.emissive.setHex(0x5a3a12);
           const box = new THREE.Mesh(new THREE.BoxGeometry(1, WALL_H, 1), mat);
           box.position.set(x, WALL_H / 2, y);
           box.castShadow = true;

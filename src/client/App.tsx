@@ -14,6 +14,7 @@ import { PartyBar } from './PartyBar';
 import { dirBetween, findPath, shouldStop } from './travel';
 import { goToDungeon, goToVersus, useGame } from './useGame';
 import { DURATION } from './motion';
+import { Draft } from './Draft';
 import { recordRun, loadProfile } from './profile';
 import { bringHome, markCleared, markTutorialDone, rememberSkills, spendFromStash } from './stash';
 import { useTurnEffects } from './useTurnEffects';
@@ -354,6 +355,14 @@ export function App() {
     );
   }
 
+  /*
+   * 支度（段階D D8）。ロビーと盤の間に挟まる、対戦だけの画面。
+   * AI の番はサーバー側で自動で進むので、ここに待ちの仕掛けは要らない。
+   */
+  if (state.phase === 'draft') {
+    return <Draft state={state} myId={myId} onPick={conn.draftPick} />;
+  }
+
   const me = state.actors.find((a) => a.id === myId);
   // 誰か1人でも階段にいれば、全員が「降りる」に同意できる。
   // 全員を階段に集めさせると待ち時間が生まれる
@@ -427,7 +436,19 @@ export function App() {
             <Icon id="torch2" size={16} /> {me.fuel}
           </span>
         )}
-        <span className="turn">{state.turn}</span>
+        {/*
+          開門まで（段階D D7）。
+          **残りターンを出す。** 出さないと、歩き回っているうちに
+          いきなり相手が来る。前半に支度をさせるための仕掛けなので、
+          いつ終わるかが見えていないと仕掛けとして成立しない。
+        */}
+        {state.gate && !state.gate.open ? (
+          <span className="gate-left">
+            <Icon id="lock" size={16} /> {Math.max(0, state.gate.opensAt - state.turn)}
+          </span>
+        ) : (
+          <span className="turn">{state.turn}</span>
+        )}
         {/*
           ここは地図と歯車の2つだけにする。
           行動ボタンの列に足すと 375px でボタンが細くなって押し間違えるし、
@@ -480,8 +501,19 @@ export function App() {
       */}
       {state.mode === 'versus' && (state.phase === 'won' || state.phase === 'lost') && (
         <div className={`banner ${state.phase === 'won' ? 'win' : 'lose'}`}>
+          {/*
+            引き分けは「負けた…」と書かない（段階D D9）。
+            時間切れで並んだときに負け扱いにされると、
+            何が足りなかったのか分からないまま終わる。
+            winner が立っていなければ、どちらも勝っていない。
+          */}
           <span>
-            {state.phase === 'won' ? '勝った！' : '負けた…'} {state.turn} ターン
+            {state.winner === undefined
+              ? '引き分け'
+              : state.phase === 'won'
+                ? '勝った！'
+                : '負けた…'}{' '}
+            {state.turn} ターン
           </span>
           <button onClick={() => location.reload()}>もう一度</button>
         </div>

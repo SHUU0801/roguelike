@@ -6,6 +6,9 @@ import { SPECIES, type SpeciesId } from '../shared/monsters';
 import {
   BAG_H,
   BAG_W,
+  DRAFT_OFFER,
+  DRAFT_ROUNDS,
+  EXPLORE_TURNS,
   FUEL_START,
   TEAM_SIZE,
   actorAt,
@@ -22,12 +25,14 @@ import {
   arenaSpawn,
   arenaSpots,
   createFloor,
+  closeGate,
   createMirrorFloor,
   createTutorialFloor,
+  gateCells,
   scatterPositions,
   spawnPos,
 } from './dungeon';
-import { pick, randInt } from './random';
+import { pick, randInt, shuffle } from './random';
 
 /*
  * 出る敵とアイテムはダンジョンごとに違う（shared/dungeons.ts）。
@@ -76,8 +81,9 @@ export function createInitialGame(
     floorStartedAt: 0,
     waitingFor: [],
     deadlineAt: null,
+    dealt: { A: 0, B: 0 },
   };
-  if (mode === 'versus') populateArena(state);
+  if (mode === 'versus') setUpArena(state);
   else if (dungeon === 'tutorial') seedTutorial(state);
   else populateFloor(state);
   return state;
@@ -164,13 +170,29 @@ export function setLoadout(state: GameState, id: string, itemIds: string[]): voi
 
 /** ロビーから探索を始める。ここで開始アイテムを配る */
 export function startGame(state: GameState): void {
-  if (state.phase !== 'lobby') return;
+  // 協力は lobby から、対戦はドラフトを終えた draft から来る
+  if (state.phase !== 'lobby' && state.phase !== 'draft') return;
   state.phase = 'playing';
 
   for (const player of state.actors.filter((a) => a.kind === 'player')) {
-    // 職業の基本装備 + ホームから持ち込んだもの。
-    // 入らなかったぶんは黙って捨てる（袋の大きさが上限）
-    const bring: ItemId[] = [jobOf(player.job).startingItem, ...(loadouts.get(player.id) ?? [])];
+    /*
+     * 持ち込むもの。
+     *
+     * 協力: 職業の基本装備 + ホームの倉庫から入れたもの。
+     * 対戦: 職業の基本装備 + **ドラフトで取ったもの**。倉庫は使わない。
+     *
+     * 対戦で倉庫を許すと、**たくさん周回した人が強い状態で出てくる。**
+     * AI には倉庫が無いので AI 戦では一方的になるし、人間どうしでも
+     * 盤の上の判断ではなく外での蓄積で勝敗が決まる。
+     * 揃えるためにドラフトを入れたので、ここで倉庫を切る。
+     *
+     * 入らなかったぶんは黙って捨てる（袋の大きさが上限）
+     */
+    const extras: ItemId[] =
+      state.mode === 'versus'
+        ? (state.draft?.taken[player.team === 'M' ? 'A' : player.team] ?? [])
+        : (loadouts.get(player.id) ?? []);
+    const bring: ItemId[] = [jobOf(player.job).startingItem, ...extras];
     for (const itemId of bring) {
       const item: ItemInstance = {
         id: newId('i'),
@@ -187,8 +209,11 @@ export function startGame(state: GameState): void {
     }
     loadouts.delete(player.id);
 
-    // 持ち込むわざ。覚え直す手間を省くぶん、浅いところを周回する意味が出る
-    const extra = skillPicks.get(player.id);
+    /*
+     * 持ち込むわざ。覚え直す手間を省くぶん、浅いところを周回する意味が出る。
+     * **対戦では使わない。** 倉庫と同じ理由で、外での蓄積が盤に乗ってしまう。
+     */
+    const extra = state.mode === 'versus' ? undefined : skillPicks.get(player.id);
     if (extra && SKILLS[extra].job === player.job && !player.skills.includes(extra)) {
       player.skills.push(extra);
       pushLog(state, `${player.slot}番は${SKILLS[extra].name}を覚えている`);
@@ -196,7 +221,138 @@ export function startGame(state: GameState): void {
     skillPicks.delete(player.id);
   }
 
-  pushLog(state, 'ダンジョンに入った');
+  // 配り終えたら捨てる。残しておくと、試合中に候補が画面に出たままになる
+  state.draft = undefined;
+
+  pushLog(state, state.mode === 'versus' ? '扉が閉じている。支度をしろ' : 'ダンジョンに入った');
+}
+
+
+/*
+ * ────────── ドラフト（段階D D8） ──────────
+ */
+
+/**
+ * 支度を始める。ロビー → draft。
+ *
+ * ## 候補の配り方
+ *
+ * **全種類を混ぜて配り切る。** 1巡ごとに引き直すと、
+ * 「強い物が一度も出ないまま終わる巡」が作れてしまう。
+ * 最初に全部を混ぜておけば、出る物の集合は盤ごとに同じになり、
+ * 変わるのは**出てくる順番だけ**になる。
+ *
+ * 順番が運ではないか？ 順番は両チームに**同じ**ものが見えていて、
+ * 取る順だけが交互なので、片側だけが得をする余地が無い。
+ */
+export function beginDraft(state: GameState): void {
+  if (state.mode !== 'versus' || state.phase !== 'lobby') return;
+
+  const pool = shuffle(Object.keys(ITEMS) as ItemId[]);
+  state.phase = 'draft';
+  state.draft = {
+    offer: pool.slice(0, DRAFT_OFFER),
+    rest: pool.slice(DRAFT_OFFER),
+    round: 0,
+    picking: firstPicker(0),
+    taken: { A: [], B: [] },
+  };
+  pushLog(state, `支度。${DRAFT_OFFER}つから1つずつ、交互に取る`);
+}
+
+/**
+ * その巡で先に選ぶチーム。
+ *
+ * **巡ごとに入れ替える。** DRAFT_ROUNDS が偶数なので、
+ * 先に選んだ回数は必ず A と B で同じになる
+ * （03_改善構成.md 段階D の判断(3)「ここは譲れない」）。
+ */
+function firstPicker(round: number): TeamId {
+  return round % 2 === 0 ? 'A' : 'B';
+}
+
+/**
+ * 候補から1つ取る。取れたら true。
+ *
+ * 番でないチームからの指定も、出ていない物の指定も黙って落とす。
+ * **ここを通らない経路で taken が増えないこと**が、
+ * 取った数が左右で揃っていることの保証になっている。
+ */
+export function draftPick(state: GameState, team: TeamId, itemId: ItemId): boolean {
+  const draft = state.draft;
+  if (state.phase !== 'draft' || !draft) return false;
+  if (team !== draft.picking) return false;
+
+  const at = draft.offer.indexOf(itemId);
+  if (at < 0) return false;
+
+  draft.offer.splice(at, 1);
+  draft.taken[team].push(itemId);
+  pushLog(state, `チーム${team} は${ITEMS[itemId].name}を取った`);
+
+  const other: TeamId = team === 'A' ? 'B' : 'A';
+  // 相手がまだこの巡を取っていない → 番を渡すだけ
+  if (draft.taken[other].length < draft.taken[team].length) {
+    draft.picking = other;
+    return true;
+  }
+
+  // 両方取った。残りは流れる（1つ流れる）
+  if (draft.offer.length > 0) {
+    pushLog(state, `${draft.offer.map((i) => ITEMS[i].name).join('・')}は流れた`);
+  }
+
+  draft.round += 1;
+  if (draft.round >= DRAFT_ROUNDS) {
+    startGame(state);
+    return true;
+  }
+
+  draft.offer = draft.rest.slice(0, DRAFT_OFFER);
+  draft.rest = draft.rest.slice(DRAFT_OFFER);
+  draft.picking = firstPicker(draft.round);
+  return true;
+}
+
+/**
+ * AI の番なら自動で取る。番が人間に戻るまで繰り返す。
+ *
+ * **乱数を使わない。** 相手の支度が抽選で決まると、
+ * 盤を鏡像にしてまで条件を揃えた意味が消える。
+ * 同じ候補が出れば AI は必ず同じ物を取る。
+ */
+export function autoDraft(state: GameState): void {
+  // 候補が尽きるより多く回らない。番が動かない事故で無限に回らないための止め
+  for (let guard = 0; guard < DRAFT_ROUNDS * DRAFT_OFFER + 2; guard++) {
+    const draft = state.draft;
+    if (state.phase !== 'draft' || !draft) return;
+    if (!allBots(state, draft.picking)) return;
+
+    const want = BOT_WANTS.find((id) => draft.offer.includes(id)) ?? draft.offer[0];
+    if (!want) return;
+    if (!draftPick(state, draft.picking, want)) return;
+  }
+}
+
+/**
+ * AI が欲しい順。**固定の並び。**
+ *
+ * 一騎打ちなので、まず殴り合いに勝てるもの（剣→盾）、
+ * 次に粘れるもの（薬草）、最後が状況次第のもの。
+ * 人間と取り合いになっても、先に選べる回数は同じなので不公平にならない。
+ */
+const BOT_WANTS: ItemId[] = ['sword', 'shield', 'potion', 'torch', 'bomb', 'scroll'];
+
+/**
+ * そのチームが全員 AI か。人間が1人でもいれば待つ。
+ *
+ * **誰もいないチームも「待たない」側に数える。** 人が抜けた席の番で
+ * 止まると、残った人は永久に押せない画面を見ることになる。
+ * 待っても来ない相手は待たない。
+ */
+function allBots(state: GameState, team: TeamId): boolean {
+  const members = state.actors.filter((a) => a.kind === 'player' && a.team === team);
+  return members.every((a) => a.bot === true);
 }
 
 export function addPlayer(state: GameState, id: string): void {
@@ -366,6 +522,21 @@ function versusSpawn(state: GameState, team: TeamId, slot: number): Pos {
  */
 const ARENA_MONSTERS = 2;
 const ARENA_ITEMS = 2;
+
+/**
+ * 対戦の盤の支度。中身を置いて、**中央の扉を閉じる**（段階D D7）。
+ *
+ * 閉じるのはタイルを壁に書き換えることなので、
+ * この時点から開門まで、左右は本当につながっていない。
+ * 「通れないことにする」のではなく「通れない盤にする」。
+ */
+function setUpArena(state: GameState): void {
+  populateArena(state);
+
+  const cells = gateCells(state.floor);
+  closeGate(state.floor, cells);
+  state.gate = { cells, opensAt: EXPLORE_TURNS, open: false };
+}
 
 function populateArena(state: GameState): void {
   const spots = arenaSpots(state.floor, ARENA_MONSTERS + ARENA_ITEMS);

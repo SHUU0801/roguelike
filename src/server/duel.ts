@@ -46,8 +46,21 @@ import { visionOf } from './vision';
  * **AI が迷子になるなら、それは隠せている証拠。**
  */
 
-/** 見つけていないときに向かう先。歩くだけで必ず相手の陣地に着く */
+/**
+ * 見つけていないときに向かう先。
+ *
+ * 開門前は**扉の前**。相手の陣地は壁で仕切られていて行けないので、
+ * そこを目指すと経路が見つからず、その場で止まってしまう（段階D D7）。
+ * 開いてからは相手の出発点へ。歩くだけで必ず相手に行き当たる。
+ */
 function goal(state: GameState, bot: Actor): Pos {
+  const gate = state.gate;
+  if (gate && !gate.open) {
+    // 自陣側の扉のマスの手前。鏡なのでどちらのチームからも同じ距離
+    const half = state.floor.width / 2;
+    const mine = gate.cells.find((c) => (bot.team === 'A' ? c.x < half : c.x >= half));
+    if (mine) return mine;
+  }
   // 自分がチーム A なら B の出発点へ、B なら A の出発点へ
   return arenaSpawn(state.floor, bot.team === 'A' ? 'B' : 'A', 0);
 }

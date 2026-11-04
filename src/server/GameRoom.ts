@@ -11,12 +11,16 @@ import {
   type TeamId,
 } from '../shared/types';
 import { isDungeonId, type DungeonId } from '../shared/dungeons';
+import { isItemId } from '../shared/items';
 import { isJobId } from '../shared/jobs';
 import { isPerkId } from '../shared/perks';
 import {
   addPlayer,
+  autoDraft,
+  beginDraft,
   chooseJob,
   createInitialGame,
+  draftPick,
   fillWithBots,
   pushLog,
   removePlayer,
@@ -136,12 +140,47 @@ export class GameRoom extends Room {
 
     this.onMessage('start', () => {
       if (this.game.phase !== 'lobby') return;
-      /*
-       * 対戦は、空いている席を AI で埋めてから始める（段階 D6）。
-       * **人間が1人でも始められる**ことが、対戦を作りながら確かめる唯一の手段。
-       */
-      fillWithBots(this.game);
+
+      if (this.game.mode === 'versus') {
+        /*
+         * 対戦は、空いている席を AI で埋めてから始める（段階 D6）。
+         * **人間が1人でも始められる**ことが、対戦を作りながら確かめる唯一の手段。
+         *
+         * 盤に入る前にドラフトを1つ挟む（段階 D8）。
+         * AI の番は自動で進むので、相手が AI なら人間は自分の番だけ押せばよい。
+         */
+        fillWithBots(this.game);
+        beginDraft(this.game);
+        autoDraft(this.game);
+        updateVision(this.game);
+        this.publish();
+        return;
+      }
+
       startGame(this.game);
+      updateVision(this.game);
+      this.publish();
+    });
+
+    /*
+     * ドラフトで1つ取る（段階 D8）。**ターンの行動ではない。**
+     * 盤に入る前の話なので、締め切りも待ち合わせも関わらない。
+     *
+     * 選べるのは自分のチームの番のときだけ。game.ts 側でも見ているが、
+     * ここでも「その人のチーム」を client から取る——
+     * **チームを本文に入れさせない。** 入れさせると相手の番に差し込める。
+     */
+    this.onMessage<unknown>('draft', (client, itemId) => {
+      if (this.game.phase !== 'draft') return;
+      if (typeof itemId !== 'string' || !isItemId(itemId)) return;
+
+      const me = this.game.actors.find((a) => a.id === client.sessionId);
+      const team = me ? teamOf(me) : null;
+      if (!team) return;
+
+      if (!draftPick(this.game, team, itemId)) return;
+      // 相手が AI なら、その番はここで進む
+      autoDraft(this.game);
       updateVision(this.game);
       this.publish();
     });

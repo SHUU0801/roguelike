@@ -2656,3 +2656,109 @@ button.wide.danger {
 .side-pick b { font-size: 14px; }
 .side-pick span { font-size: 11px; color: #9aa3ad; }
 .side-pick:disabled { opacity: 0.5; }
+
+/* ===== 対戦のしたく（段階D D8）と中央の扉（D7） ===== */
+
+/*
+ * ロビーと盤の間に挟まる1画面。
+ * スマホの縦持ちで、候補3つが**横に並んで全部見える**ことが条件。
+ * 縦に積むと比べられない（比べるための画面なので、それでは意味がない）。
+ */
+.draft {
+  /* .app / .lobby と同じ枠に収める。
+     これが無いと候補3つの grid が画面より広がって、3枚目が切れる */
+  box-sizing: border-box;
+  max-width: 480px;
+  margin: 0 auto;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+
+.draft-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.draft-head b { font-size: 18px; }
+.draft-round { font-size: 12px; color: #7b8694; font-variant-numeric: tabular-nums; }
+
+.draft-turn {
+  margin: 0;
+  font-size: 13px;
+  color: #7b8694;
+}
+
+/* 自分の番だけ色を付ける。押せるかどうかが一目で分かる */
+.draft-turn.mine { color: #e0c060; font-weight: 700; }
+
+.draft-offer {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.draft-card {
+  /* 1fr の列の中で縮めるように。既定の min-width:auto だと
+     中身の幅が下限になり、狭い端末ではみ出す */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 6px;
+  font-family: inherit;
+  color: #e8e8e8;
+  background: #1b2029;
+  border: 1px solid #39404a;
+  border-radius: 10px;
+}
+
+.draft-card b { font-size: 13px; }
+
+.draft-stat {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: #9aa3ad;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 相手の番は押せない。押せないことを薄さで示す */
+.draft-card:disabled { opacity: 0.45; }
+.draft-card:not(:disabled):active { border-color: #e0c060; background: #262317; }
+
+.draft-taken { display: flex; flex-direction: column; gap: 6px; }
+
+.draft-row { display: flex; align-items: center; gap: 6px; }
+.draft-label { width: 44px; font-size: 11px; color: #7b8694; }
+
+/* 取った数だけ枠が埋まる。残り何回かが数えなくても分かる */
+.draft-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: #11141a;
+  border: 1px solid #2a2e35;
+  border-radius: 8px;
+}
+
+.draft-slot.on { border-color: #4a5260; background: #1b2029; }
+
+.draft-note { margin: 0; font-size: 11px; color: #7b8694; }
+
+/* 開門までの残りターン。松明の隣に並ぶので、同じ大きさに揃える */
+.gate-left {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: #e0c060;
+  font-variant-numeric: tabular-nums;
+}

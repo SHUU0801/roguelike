@@ -86,6 +86,11 @@ export const ITEMS = {
 
 export type ItemId = keyof typeof ITEMS;
 
+/** 外から来た文字列が本当にアイテムの id か。通信の本文を信じないため */
+export function isItemId(v: unknown): v is ItemId {
+  return typeof v === 'string' && v in ITEMS;
+}
+
 export function itemDefOf(itemId: string): ItemDef {
   return (ITEMS as Record<string, ItemDef>)[itemId] ?? ITEMS.potion;
 }

@@ -1,8 +1,11 @@
 /** 使い捨ての動作確認スクリプト。npx tsx check.ts */
 import {
   addPlayer,
+  autoDraft,
+  beginDraft,
   chooseJob,
   createInitialGame,
+  draftPick,
   fillWithBots,
   inventoryOf,
   setLogScope,
@@ -30,7 +33,7 @@ import { awardExp, takePerk } from './src/server/levels';
 import { resolveTurn, retireCleanup } from './src/server/resolve';
 import { playerTeams, updateVision, visionOf } from './src/server/vision';
 import { readFileSync } from 'node:fs';
-import { attack } from './src/server/combat';
+import { attack, damage } from './src/server/combat';
 import { monsterAct } from './src/server/ai';
 import { botIntent } from './src/server/duel';
 import { viewFor } from './src/server/view';
@@ -38,9 +41,14 @@ import { arenaSpawn, createMirrorFloor } from './src/server/dungeon';
 import { JOBS, type JobId } from './src/shared/jobs';
 import { BASE_SKILL } from './src/shared/skills';
 import { OFFER_COUNT, PERKS, PERK_IDS, perkCount, perkOf } from './src/shared/perks';
+import { ITEMS, type ItemId } from './src/shared/items';
 import {
   BAG_H,
   DIR_DELTA,
+  DRAFT_OFFER,
+  DRAFT_ROUNDS,
+  EXPLORE_TURNS,
+  MATCH_TURNS,
   MAX_LEVEL,
   VERSUS_PLAYERS,
   effectiveAtk,
@@ -49,6 +57,7 @@ import {
   tileAt,
   type Actor,
   type Dir,
+  type Floor,
   type GameState,
   type Intent,
   type ItemInstance,
@@ -2019,6 +2028,313 @@ function sees(state: GameState, team: 'A' | 'B', p: Pos): boolean {
       '協力モードのログの文面は変わっていない（種族の名前のまま）',
     );
   }
+}
+
+// --- 68. 中央の扉（段階D D7） ---
+{
+  /** from から to へ歩いて行けるか。幅優先。壁だけを見る */
+  const reachable = (floor: Floor, from: Pos, to: Pos): boolean => {
+    const seen = new Set<number>([from.y * floor.width + from.x]);
+    let edge: Pos[] = [from];
+    while (edge.length > 0) {
+      const next: Pos[] = [];
+      for (const at of edge) {
+        for (const d of Object.values(DIR_DELTA)) {
+          const p = { x: at.x + d.x, y: at.y + d.y };
+          if (p.x < 0 || p.y < 0 || p.x >= floor.width || p.y >= floor.height) continue;
+          const key = p.y * floor.width + p.x;
+          if (seen.has(key)) continue;
+          if (tileAt(floor, p.x, p.y) === 'wall') continue;
+          if (p.x === to.x && p.y === to.y) return true;
+          seen.add(key);
+          next.push(p);
+        }
+      }
+      edge = next;
+    }
+    return false;
+  };
+
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+
+  const gate = state.gate;
+  assert(gate !== undefined, '対戦の盤には扉がある');
+  assert(gate !== undefined && gate.cells.length > 0, '扉のマスが決まっている');
+  assert(gate !== undefined && !gate.open, '始めは閉じている');
+
+  /*
+   * **閉じているあいだ、扉のマスはタイルそのものが壁。**
+   * 「通れないことにする」のではなく「通れない盤にする」ので、
+   * 移動も視界も経路探索も、扉を知らないまま正しく動く。
+   */
+  const closed =
+    gate !== undefined && gate.cells.every((c) => tileAt(state.floor, c.x, c.y) === 'wall');
+  assert(closed, '閉じている間は壁になっている');
+
+  // 左右が本当につながっていない
+  assert(!reachable(state.floor, arenaSpawn(state.floor, 'A'), arenaSpawn(state.floor, 'B')),
+    '閉じている間は相手の陣地へ行けない');
+
+  // 15ターン経つと開く
+  startGame(state);
+  for (let i = 0; i < EXPLORE_TURNS; i++) resolveTurn(state, new Map());
+
+  assert(state.gate?.open === true, `${EXPLORE_TURNS}ターンで開く`);
+  const opened =
+    state.gate !== undefined &&
+    state.gate.cells.every((c) => tileAt(state.floor, c.x, c.y) === 'floor');
+  assert(opened, '開いたら床になっている');
+  assert(reachable(state.floor, arenaSpawn(state.floor, 'A'), arenaSpawn(state.floor, 'B')),
+    '開いたら相手の陣地へ行ける');
+}
+
+// --- 69. 協力の盤に扉は無い（変化ゼロ） ---
+{
+  const coop = createInitialGame('ruin', 'coop');
+  assert(coop.gate === undefined, '協力の盤に扉は無い');
+  assert(coop.draft === undefined, '協力にドラフトは無い');
+
+  addPlayer(coop, 'p1');
+  startGame(coop);
+  assert(coop.phase === 'playing', '協力はロビーから直接盤に入る（draft を挟まない）');
+}
+
+// --- 70. ドラフト（段階D D8） ---
+{
+  /*
+   * **巡数が偶数**であることが、この仕掛けの土台。
+   * 奇数だと先に選べる回数が 2:1 になり、A/B の割り当て自体が運になる
+   * （03_改善構成.md 段階D の判断(3)「ここは譲れない」）。
+   */
+  assert(DRAFT_ROUNDS % 2 === 0, 'ドラフトの巡数は偶数');
+
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  beginDraft(state);
+
+  assert(state.phase === 'draft', 'ロビーの次は支度');
+  assert(state.draft?.offer.length === DRAFT_OFFER, `候補が${DRAFT_OFFER}つ出る`);
+  assert(state.draft?.picking === 'A', '1巡目は A が先');
+
+  // 番でないチームは取れない
+  const first = state.draft?.offer[0] as ItemId;
+  assert(!draftPick(state, 'B', first), '番でないチームは取れない');
+  // 出ていないものも取れない
+  const notOffered = (Object.keys(ITEMS) as ItemId[]).find(
+    (id) => !state.draft?.offer.includes(id),
+  );
+  assert(notOffered !== undefined && !draftPick(state, 'A', notOffered),
+    '出ていないものは取れない');
+
+  assert(draftPick(state, 'A', first), 'A が取れる');
+  assert(state.draft?.picking === 'B', '取ったら相手の番');
+
+  const second = state.draft?.offer[0] as ItemId;
+  assert(draftPick(state, 'B', second), 'B が取れる');
+
+  // 2人が取ったので巡が進み、残り1つは流れる
+  assert(state.draft?.round === 1, '2人取ったら次の巡');
+  assert(state.draft?.offer.length === DRAFT_OFFER, '次の候補が出る');
+  assert(!state.draft?.offer.includes(first) && !state.draft?.offer.includes(second),
+    '取られたものは出てこない');
+
+  /*
+   * **2巡目は B が先。** これで先に選んだ回数が 1 対 1 になる。
+   * ここが崩れると、A に入るか B に入るかだけで有利不利が決まる。
+   */
+  assert(state.draft?.picking === 'B', '2巡目は B が先');
+
+  const third = state.draft?.offer[0] as ItemId;
+  draftPick(state, 'B', third);
+  const fourth = state.draft?.offer[0] as ItemId;
+  draftPick(state, 'A', fourth);
+
+  // 巡が尽きたら盤に入る
+  assert(state.phase === 'playing', '巡が尽きたら試合が始まる');
+  assert(state.draft === undefined, '始まったら候補は消える');
+
+  // 取ったものが袋に入っている
+  const a = state.actors.find((x) => x.team === 'A' && x.kind === 'player');
+  const mine = state.items.filter((i) => i.ownerId === a?.id).map((i) => i.itemId);
+  assert(mine.includes(first), '1巡目に取ったものが袋にある');
+  assert(mine.includes(fourth), '2巡目に取ったものが袋にある');
+
+  // 左右で取った数が同じ
+  const countOf = (t: 'A' | 'B') => {
+    const who = state.actors.find((x) => x.team === t && x.kind === 'player');
+    return state.items.filter((i) => i.ownerId === who?.id).length;
+  };
+  assert(countOf('A') === countOf('B'), '持ち物の数が左右で同じ');
+}
+
+// --- 71. AI の支度は乱数で決まらない ---
+{
+  const run = (): string[] => {
+    const state = createInitialGame('ruin', 'versus');
+    addPlayer(state, 'p1');
+    fillWithBots(state);
+    beginDraft(state);
+    // 候補を固定して、選び方だけを見る
+    if (state.draft) {
+      state.draft.offer = ['potion', 'sword', 'shield'];
+      state.draft.picking = 'B'; // B は AI
+    }
+    autoDraft(state);
+    return [...(state.draft?.taken.B ?? [])];
+  };
+  const a = run();
+  const b = run();
+  assert(a.length === 1 && a[0] === 'sword', 'AI は決めた順で選ぶ（剣が最優先）');
+  assert(a.join() === b.join(), '同じ候補なら AI は必ず同じものを選ぶ');
+}
+
+// --- 72. 時間切れの判定（段階D D9） ---
+{
+  /*
+   * 生存数 → 残HP → 与ダメージ → 引き分け の順。
+   * **盤の上で起きたことの重さの順**になっている。
+   */
+  const setUp = () => {
+    const state = createInitialGame('ruin', 'versus');
+    addPlayer(state, 'p1');
+    addPlayer(state, 'p2');
+    startGame(state);
+    // 時間切れの1つ手前まで進める
+    state.turn = MATCH_TURNS - 1;
+    // 松明で勝手に死なないように満たしておく
+    for (const a of state.actors) a.fuel = 999;
+    return state;
+  };
+
+  // ① 残HP で決まる
+  {
+    const state = setUp();
+    const a = state.actors.find((x) => x.team === 'A' && x.kind === 'player');
+    const b = state.actors.find((x) => x.team === 'B' && x.kind === 'player');
+    if (a) a.hp = 20;
+    if (b) b.hp = 5;
+    resolveTurn(state, new Map());
+    assert(state.winner === 'A', '残HP が多いほうが勝つ');
+  }
+
+  // ② 残HP が並んだら与ダメージ
+  {
+    const state = setUp();
+    for (const x of state.actors) if (x.kind === 'player') x.hp = 10;
+    state.dealt = { A: 3, B: 9 };
+    resolveTurn(state, new Map());
+    assert(state.winner === 'B', '並んだら与えた傷が多いほうが勝つ');
+  }
+
+  // ③ 全部並んだら引き分け
+  {
+    const state = setUp();
+    for (const x of state.actors) if (x.kind === 'player') x.hp = 10;
+    state.dealt = { A: 0, B: 0 };
+    resolveTurn(state, new Map());
+    assert(state.winner === undefined, '全部並んだら勝者を立てない');
+    assert(state.phase !== 'playing', '引き分けでも試合は終わる');
+  }
+
+  // ④ 時間内なら終わらない
+  {
+    const state = setUp();
+    state.turn = 0;
+    resolveTurn(state, new Map());
+    assert(state.phase === 'playing', '時間内は終わらない');
+  }
+}
+
+// --- 73. モンスターを殴っても与ダメージには数えない ---
+{
+  /*
+   * 数えると、相手に近づかずコウモリを殴り続けた側が時間切れで勝ててしまう。
+   * 対戦の答えは「相手に何をしたか」であって「何ターン働いたか」ではない。
+   */
+  const state = createInitialGame('ruin', 'versus');
+  addPlayer(state, 'p1');
+  addPlayer(state, 'p2');
+  startGame(state);
+
+  const a = state.actors.find((x) => x.team === 'A' && x.kind === 'player');
+  const mon = state.actors.find((x) => x.kind === 'monster');
+  const foe = state.actors.find((x) => x.team === 'B' && x.kind === 'player');
+
+  if (a && mon) damage(state, mon, 5, a);
+  assert(state.dealt.A === 0, 'モンスターに与えた傷は数えない');
+
+  if (a && foe) damage(state, foe, 5, a);
+  assert(state.dealt.A === 5, '相手チームに与えた傷は数える');
+}
+
+// --- 74. 協力モードでは与ダメージを数えない（変化ゼロ） ---
+{
+  const state = createInitialGame('ruin', 'coop');
+  addPlayer(state, 'p1');
+  startGame(state);
+  const me = state.actors.find((x) => x.kind === 'player');
+  const mon = state.actors.find((x) => x.kind === 'monster');
+  if (me && mon) damage(state, mon, 5, me);
+  assert(state.dealt.A === 0 && state.dealt.B === 0, '協力では数えない');
+}
+
+// --- 75. 試合は必ず終わる ---
+{
+  /*
+   * **決着しない盤を作らない。**
+   *
+   * D6 のときに「通路にモンスターが1体座っているだけで道が永久に閉じる」で
+   * 8回に3回終わらない盤が出た（duel.ts の firstStep に経緯）。
+   * 扉（D7）で前半を仕切り、上限ターン（D9）を置いたので、
+   * **どんな盤でも必ず終わる**はず。それをここで押さえる。
+   *
+   * AI どうしで回すので人の判断は入らない。盤はそのつど違う。
+   */
+  let ended = 0;
+  let byTime = 0;
+  const RUNS = 12;
+
+  for (let n = 0; n < RUNS; n++) {
+    const state = createInitialGame('ruin', 'versus');
+    addPlayer(state, `h${n}`);
+    fillWithBots(state);
+    beginDraft(state);
+
+    // 人間の席も AI に選ばせる。両チームを AI にして回す
+    for (const a of state.actors) if (a.kind === 'player') a.bot = true;
+    autoDraft(state);
+    assert(state.phase === 'playing', `${n + 1}回目: 支度が終わって始まる`);
+
+    // 上限 + 少しだけ余分に回す。終わらなければそれが不具合
+    for (let t = 0; t < MATCH_TURNS + 5 && state.phase === 'playing'; t++) {
+      resolveTurn(state, new Map());
+    }
+    if (state.phase !== 'playing') {
+      ended++;
+      if (state.turn >= MATCH_TURNS) byTime++;
+    }
+  }
+
+  assert(ended === RUNS, `${RUNS}回とも決着した（${ended}/${RUNS}）`);
+
+  /*
+   * **時間切れは逃げ道であって、決着の主な手段ではない。**
+   *
+   * 最初 MATCH_TURNS を 60 にしていたとき、ここが 11/12 になった。
+   * つまりほとんどの試合を戦っている最中に打ち切っていた。
+   * 測ったら殴り合いだけで決着するのは 48〜87 ターンだったので
+   * 120 に上げてある（types.ts の MATCH_TURNS に経緯）。
+   *
+   * この行が落ちたら、まず「上限が短すぎないか」を疑うこと。
+   * 盤の広さや松明を触ったときに、ここが先に教えてくれる。
+   */
+  assert(
+    byTime <= RUNS / 3,
+    `ほとんどは倒して決着する（時間切れ ${byTime}/${RUNS}）`,
+  );
 }
 
 console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件 失敗`);

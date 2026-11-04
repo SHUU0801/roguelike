@@ -66,9 +66,20 @@ export function viewFor(state: GameState, team: TeamId | null): GameState {
   const phase =
     state.winner === undefined ? state.phase : state.winner === mine ? 'won' : 'lost';
 
+  /*
+   * ドラフトは**まだ配っていない候補（rest）だけ落とす。**
+   *
+   * 出ている候補も、相手が何を取ったかも、両チームに同じものが見えていてよい。
+   * むしろ見えないと「相手が剣を取ったから盾を取る」という読み合いが成立しない。
+   * 落とすのは次の巡に出てくる物だけ。先に知れると、いま何を残すかが
+   * 情報戦ではなく**先読みの答え合わせ**になる。
+   */
+  const draft = state.draft === undefined ? undefined : { ...state.draft, rest: [] };
+
   return {
     ...state,
     phase,
+    draft,
     actors,
     items,
     log,

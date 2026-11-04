@@ -159,6 +159,8 @@ export type Connection =
       setLoadout: (items: ItemId[]) => void;
       /** 持ち込むわざ。職業の基本わざに加えて1つ */
       setSkillPick: (skillId: string | null) => void;
+      /** ドラフトで1つ取る（段階D D8）。チームはサーバーが見るので送らない */
+      draftPick: (itemId: ItemId) => void;
       /** 遊んでいる人の名前。仲間の一覧に出す */
       setPlayerName: (name: string) => void;
       /** あきらめて帰る。持ち物は持ち帰れない */
@@ -249,6 +251,7 @@ export function useGame(): Connection {
         room.send('rearrange', { instanceId, x, y, rot }),
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
       setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
+      draftPick: (itemId: ItemId) => room.send('draft', itemId),
       setPlayerName: (name: string) => room.send('name', name),
       retire: () => room.send('retire'),
     };
@@ -273,6 +276,7 @@ export function useGame(): Connection {
         room.send('rearrange', { instanceId, x, y, rot }),
       setLoadout: (items: ItemId[]) => room.send('loadout', items),
       setSkillPick: (skillId: string | null) => room.send('skillpick', skillId),
+      draftPick: (itemId: ItemId) => room.send('draft', itemId),
       setPlayerName: (name: string) => room.send('name', name),
       retire: () => room.send('retire'),
     };

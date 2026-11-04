@@ -394,6 +394,39 @@ export function arenaSpots(floor: Floor, count: number): Pos[] {
   return shuffle(candidates).slice(0, count);
 }
 
+
+/**
+ * 中央の扉になるマス（段階D D7）。
+ *
+ * 鏡像フロアで左右をつないでいるのは、真ん中を横切る1本の通路だけ
+ * （carveHalf の最後に掘っているもの）。その通路が折り返し線をまたぐ
+ * 2マスが扉になる。
+ *
+ * **部屋は折り返し線に届かない。** carveHalf の部屋は x が width-2 までで、
+ * 鏡にしても中央の2列には入らない。だから中央2列にある床マスは
+ * 必ずこの通路のもので、取り違える余地がない。
+ */
+export function gateCells(floor: Floor): Pos[] {
+  const half = floor.width / 2;
+  const cells: Pos[] = [];
+  for (let y = 0; y < floor.height; y++) {
+    for (const x of [half - 1, half]) {
+      if (tileOf(floor, x, y) === 'floor') cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/** 扉を閉じる。タイルそのものを壁にするので、通れるかを見る処理は無改修 */
+export function closeGate(floor: Floor, cells: Pos[]): void {
+  for (const c of cells) setTile(floor, c.x, c.y, 'wall');
+}
+
+/** 扉を開ける。閉じたときの逆 */
+export function openGate(floor: Floor, cells: Pos[]): void {
+  for (const c of cells) setTile(floor, c.x, c.y, 'floor');
+}
+
 /*
  * ────────── チュートリアル ──────────
  */

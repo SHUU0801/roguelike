@@ -11,13 +11,14 @@ import {
   type Pos,
   type TeamId,
 } from '../shared/types';
-import { FUEL_DANGER, FUEL_WARN, REVIVE_COST, hasEffect } from '../shared/types';
+import { FUEL_DANGER, FUEL_WARN, MATCH_TURNS, REVIVE_COST, hasEffect } from '../shared/types';
 import { isSkillId } from '../shared/skills';
 import { alertOnHit, monsterAct } from './ai';
 import { attack, damage, sneakAttack } from './combat';
 import { botIntent } from './duel';
 import { applyItem } from './effects';
 import { descend, pushLog, setLogScope } from './game';
+import { openGate } from './dungeon';
 import { putIn, takeOut } from './backpack';
 import { tickEffects, useSkill } from './skills';
 import { playerTeams, updateVision, visionOf } from './vision';
@@ -104,6 +105,92 @@ export function resolveTurn(state: GameState, intents: Map<string, Intent>): voi
   updateVision(state);
 
   state.turn += 1;
+
+  /*
+   * f. 開門（段階D D7）。
+   *
+   * ターンを数え終えてから見る。「15ターン目が終わったら開く」が
+   * そのまま `state.turn >= opensAt` で書ける。
+   * 盤のタイルが変わるので、**視界を取り直す**（壁だったところが見通せる）。
+   */
+  if (openGateIfDue(state)) updateVision(state);
+
+  // g. 時間切れ（段階D D9）
+  checkTimeUp(state);
+}
+
+/**
+ * 扉を開ける頃合いか（段階D D7）。開けたら true。
+ *
+ * 閉じている間は扉のマスが 'wall' なので、
+ * **移動も視界も経路探索も、何も知らないまま正しく動く。**
+ * ここでタイルを 'floor' に戻すのが「開門」のすべて。
+ */
+function openGateIfDue(state: GameState): boolean {
+  const gate = state.gate;
+  if (!gate || gate.open || state.phase !== 'playing') return false;
+  if (state.turn < gate.opensAt) return false;
+
+  openGate(state.floor, gate.cells);
+  gate.open = true;
+  setLogScope(null);
+  pushLog(state, '扉が開いた');
+  return true;
+}
+
+/**
+ * 時間切れの判定（段階D D9）。
+ *
+ * ## なぜ上限を置くか
+ *
+ * 置かないと、互いに逃げ続ける盤が終わらない。
+ * 松明が尽きれば毎ターン傷つくので放っておいても決着はするが、
+ * **それは「どちらが先に立ち止まったか」で決まる**ので対戦の答えにならない。
+ *
+ * ## 何で決めるか
+ *
+ *   1. 生存数      立っている人数が多いほう
+ *   2. 残HP        合計が多いほう
+ *   3. 与ダメージ  **攻めた側を勝たせる。** これが無いと、
+ *                  互いに逃げ回った試合が引き分けで終わる
+ *   4. 引き分け    ここまで並んだら、本当に差が無かった
+ *
+ * 順番がこれなのは、**盤の上で起きたことの重さの順**だから。
+ * 倒したことは削ったことより重く、削ったことは何もしないより重い。
+ */
+function checkTimeUp(state: GameState): void {
+  if (state.mode !== 'versus' || state.phase !== 'playing') return;
+  if (state.turn < MATCH_TURNS) return;
+
+  const players = state.actors.filter((a) => a.kind === 'player');
+  const side = (t: TeamId) => players.filter((p) => p.team === t);
+  const alive = (t: TeamId) => side(t).filter((p) => p.alive).length;
+  const hp = (t: TeamId) => side(t).reduce((n, p) => n + (p.alive ? p.hp : 0), 0);
+
+  setLogScope(null);
+  pushLog(state, '時間切れ');
+
+  const rounds: [string, (t: TeamId) => number][] = [
+    ['生存数', alive],
+    ['残りHP', hp],
+    ['与えた傷', (t) => state.dealt[t]],
+  ];
+
+  for (const [label, score] of rounds) {
+    const a = score('A');
+    const b = score('B');
+    if (a === b) continue;
+    const win: TeamId = a > b ? 'A' : 'B';
+    state.phase = 'won';
+    state.winner = win;
+    pushLog(state, `${label}でチーム${win} の勝ち（${a} 対 ${b}）`);
+    return;
+  }
+
+  // ここまで並んだ。勝者を立てない
+  state.phase = 'lost';
+  state.lostBy = 'dead';
+  pushLog(state, '引き分け');
 }
 
 /**
